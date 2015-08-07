@@ -22,6 +22,7 @@ namespace Drunkcod.Data.ServiceBroker
 
 	public class SqlServerServiceBroker
 	{
+		const string ServiceBrokerEndDialog = "http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog";
 		const string SinkServiceName = "Drunkcod.Data.ServiceBroker.SinkService";
 		readonly SqlCommander db;
 
@@ -68,9 +69,9 @@ select @cid"), false);
 		public ServiceBrokerService CreateSinkService() {
 			if((int)db.ExecuteScalar($"select count(*) from sys.services where name = '{SinkServiceName}'") != 1) { 
 
-				if(db.ExecuteScalar("select object_id('handle_sink')") is DBNull)
+				if(db.ExecuteScalar($"select object_id('[{SinkServiceName} Handler]')") is DBNull)
 					ExecuteNonQuery(
-@"create procedure handle_sink
+$@"create procedure [{SinkServiceName} Handler]
 as
 	declare @cid uniqueidentifier
 	declare @message_body varbinary(max)
@@ -86,11 +87,11 @@ as
 
 			if @@rowcount = 0 
 				break
-			if @message_type = N'http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog'
+			if @message_type = N'{ServiceBrokerEndDialog}'
 				end conversation @cid
 	end
 	commit");
-				ExecuteNonQuery("if object_id('SinkQueue') is null create queue SinkQueue with activation(status = on, procedure_name = handle_sink, max_queue_readers = 1, execute as owner)");
+				ExecuteNonQuery($"if object_id('SinkQueue') is null create queue SinkQueue with activation(status = on, procedure_name = [{SinkServiceName} Handler], max_queue_readers = 1, execute as owner)");
 				ExecuteNonQuery($"create service [{SinkServiceName}] on queue SinkQueue");
 			}
 			return new ServiceBrokerService(SinkServiceName);

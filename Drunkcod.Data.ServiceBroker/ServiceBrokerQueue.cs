@@ -10,22 +10,22 @@ namespace Drunkcod.Data.ServiceBroker
 	public class ServiceBrokerQueue
 	{
 		readonly SqlCommander db;
-		readonly string name;
+		readonly string queueName;
 		readonly string receive;
 
-		internal ServiceBrokerQueue(SqlCommander db, string name) {
+		internal ServiceBrokerQueue(SqlCommander db, string queueName) {
 			this.db = db;
-			this.name = name;
+			this.queueName = queueName;
 			this.receive = 
-				$@"receive top(1) 
+$@"receive top(1) 
 	conversation_handle,
 	message_type_name,
 	message_body
-from [{name}]";
+from [{queueName}]";
 		}
 
 		public ServiceBrokerService CreateService(string name, ServiceBrokerContract contract) {
-			db.ExecuteNonQuery($"if not exists(select null from sys.services where name = '{name}') create service [{name}] on queue {this.name}({contract.Name})", _ => { });
+			db.ExecuteNonQuery($"if not exists(select null from sys.services where name = '{name}') create service [{name}] on queue {this.queueName}({contract.Name})", _ => { });
 			return new ServiceBrokerService(name);
 		}
 
@@ -56,8 +56,8 @@ from [{name}]";
 				cmd.Transaction?.Commit();
 				return result;
 			} catch {
-				reader.Close();
-				cmd.Transaction.Rollback();
+				reader?.Close();
+				cmd.Transaction?.Rollback();
 				throw;
 			} finally {
 				reader?.Dispose();

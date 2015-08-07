@@ -20,9 +20,9 @@ namespace SimpleWorkQueue
 			sinkService = broker.CreateSinkService();
 
 			workItemMessageType = broker.CreateMessageType(messageType);
-			workQueue = broker.CreateQueue(messageType + "Queue");
-			workQueueItems = broker.CreateContract(messageType + "Contract", workItemMessageType);
-			workerService = workQueue.CreateService(messageType + "Service", workQueueItems);
+			workQueue = broker.CreateQueue(messageType);
+			workQueueItems = broker.CreateContract(messageType, workItemMessageType);
+			workerService = workQueue.CreateService(messageType, workQueueItems);
 		}
 
 		public void Post(string workItem) {
