@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.IO;
@@ -25,38 +26,34 @@ from [{queueName}]";
 		}
 
 		public ServiceBrokerService CreateService(string name, ServiceBrokerContract contract) {
-			db.ExecuteNonQuery($"if not exists(select null from sys.services where name = '{name}') create service [{name}] on queue {this.queueName}({contract.Name})", _ => { });
+			db.ExecuteNonQuery($"if not exists(select null from sys.services where name = '{name}') create service [{name}] on queue [{this.queueName}]([{contract.Name}])", _ => { });
 			return new ServiceBrokerService(name);
 		}
 
 		public bool Receive(ServiceBrokerMessageHandler handler) {
 			var cmd = db.NewCommand(receive);
 			SqlDataReader reader = null;
-			Guid endCid = Guid.Empty;
 			var result = false;
+			var conversationQueries = new List<Tuple<string, Action<SqlParameterCollection>>>();
 			try {
 				cmd.Connection.Open();
 				cmd.Transaction = cmd.Connection.BeginTransaction();
 				reader = cmd.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
 				if (reader.Read()) {
-					var cid = reader.GetGuid(0);
-					var conversation = new ServiceBrokerConversation(db, cid, true);
+					var conversation = new ServiceBrokerConversation((query, setup) => conversationQueries.Add(Tuple.Create(query, setup)),  reader.GetGuid(0));
 					handler(conversation, new ServiceBrokerMessageType(reader.GetString(1)), reader.GetStream(2));
-					if(conversation.IsEnded)
-						endCid = cid;
 					result = true;
 				}
 				reader.Close();
-				if(endCid != Guid.Empty) {
+				foreach(var item in conversationQueries) {
 					cmd.Parameters.Clear();
-					cmd.CommandText = "end conversation @cid";
-					cmd.Parameters.AddWithValue("@cid", endCid);
+					cmd.CommandText = item.Item1;
+					item.Item2(cmd.Parameters);
 					cmd.ExecuteNonQuery();
 				}
 				cmd.Transaction?.Commit();
 				return result;
 			} catch {
-				reader?.Close();
 				cmd.Transaction?.Rollback();
 				throw;
 			} finally {

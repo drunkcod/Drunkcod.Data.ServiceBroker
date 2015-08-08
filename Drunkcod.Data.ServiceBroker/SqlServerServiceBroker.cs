@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using Newtonsoft.Json;
 
 namespace Drunkcod.Data.ServiceBroker
 {
@@ -40,18 +42,18 @@ namespace Drunkcod.Data.ServiceBroker
 		}
 
 		public ServiceBrokerQueue CreateQueue(string name) {
-			ExecuteNonQuery($"if not exists(select null from sys.service_queues where name = '{name}') create queue [{name}]");
+			ExecuteNonQuery($"if object_id('[{name}]') is null create queue [{name}]");
 
 			return new ServiceBrokerQueue(db, name);
 		}
 
 		public ServiceBrokerContract CreateContract(string name, ServiceBrokerMessageType messageType) {
-			ExecuteNonQuery($"if not exists(select null from sys.service_contracts where name = '{name}') create contract [{name}]({messageType.Name} sent by initiator)");
+			ExecuteNonQuery($"if not exists(select null from sys.service_contracts where name = '{name}') create contract [{name}]([{messageType.Name}] sent by initiator)");
 			return new ServiceBrokerContract(name);
 		}
 
 		public ServiceBrokerConversation BeginConversation(ServiceBrokerService from, ServiceBrokerService to, ServiceBrokerContract contract) {
-			return new ServiceBrokerConversation(db, (Guid)db.ExecuteScalar(
+			return new ServiceBrokerConversation(db.ExecuteNonQuery, (Guid)db.ExecuteScalar(
 				$@"declare @cid uniqueidentifier
 begin dialog @cid
 from service [{from.Name}]
@@ -59,16 +61,15 @@ to service '{to.Name}'
 on contract [{contract.Name}]
 with encryption = off
 
-select @cid"), false);
+select @cid"));
 		}
 
 		public ServiceBrokerConversation OpenConversation(Guid conversationHandle) {
-			return new ServiceBrokerConversation(db, conversationHandle, false);
+			return new ServiceBrokerConversation(db.ExecuteNonQuery, conversationHandle);
 		}
 
 		public ServiceBrokerService CreateSinkService() {
 			if((int)db.ExecuteScalar($"select count(*) from sys.services where name = '{SinkServiceName}'") != 1) { 
-
 				if(db.ExecuteScalar($"select object_id('[{SinkServiceName} Handler]')") is DBNull)
 					ExecuteNonQuery(
 $@"create procedure [{SinkServiceName} Handler]
@@ -96,6 +97,52 @@ as
 			}
 			return new ServiceBrokerService(SinkServiceName);
 		}
+
+				class TypedServiceBrokerQueue<T> : IWorkQueue<T>
+		{
+			readonly SqlServerServiceBroker broker;
+			readonly ServiceBrokerQueue workQueue;
+			readonly ServiceBrokerService sinkService;
+			readonly ServiceBrokerService workerService;
+			readonly ServiceBrokerContract workerContract;
+			readonly ServiceBrokerMessageType workItemMessageType;
+
+			public TypedServiceBrokerQueue(SqlServerServiceBroker broker, ServiceBrokerService workerService, ServiceBrokerQueue workQueue, ServiceBrokerContract workerContract, ServiceBrokerMessageType workItemMessageType) {
+				this.broker = broker;
+				this.sinkService = broker.CreateSinkService();
+				this.workerService = workerService;
+				this.workQueue = workQueue;
+				this.workerContract = workerContract;
+				this.workItemMessageType = workItemMessageType;
+			}
+
+			readonly JsonSerializer serializer = new JsonSerializer();
+			public void Post(T item) {
+				var conversation = broker.BeginConversation(sinkService, workerService, workerContract);
+				var body = new MemoryStream();
+				using(var writer = new StreamWriter(body))
+					serializer.Serialize(writer, item);
+				conversation.Send(workItemMessageType, body.ToArray());
+			}
+
+			public bool Receive(Action<T> handleItem) {
+				return workQueue.Receive((c, type, body) => {
+					using(var reader = new StreamReader(body))
+						handleItem((T)serializer.Deserialize(reader, typeof(T)));
+					c.EndConversation();
+				});
+			}
+		}
+
+		public IWorkQueue<T> OpenWorkQueue<T>() {
+			var messageType = typeof(T).FullName;
+			var workItemMessageType = CreateMessageType(messageType);
+			var workQueue = CreateQueue(messageType);
+			var workerContract = CreateContract(messageType, workItemMessageType);
+			var workerService = workQueue.CreateService(messageType, workerContract);
+			return new TypedServiceBrokerQueue<T>(this, workerService, workQueue, workerContract, workItemMessageType);
+		}
+
 
 		void ExecuteNonQuery(string query) {
 			db.ExecuteNonQuery(query, _ => { });
