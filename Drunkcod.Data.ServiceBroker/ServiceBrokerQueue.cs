@@ -26,7 +26,7 @@ from [{queueName}]";
 		}
 
 		public ServiceBrokerService CreateService(string name, ServiceBrokerContract contract) {
-			db.ExecuteNonQuery($"if not exists(select null from sys.services where name = '{name}') create service [{name}] on queue [{this.queueName}]([{contract.Name}])", _ => { });
+			db.ExecuteNonQuery($"if not exists(select null from sys.services where name = '{name}') create service [{name}] on queue [{this.queueName}]([{contract.Name}])");
 			return new ServiceBrokerService(name);
 		}
 

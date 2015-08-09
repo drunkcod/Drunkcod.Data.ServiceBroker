@@ -33,22 +33,22 @@ namespace Drunkcod.Data.ServiceBroker
 		}
 
 		public void EnableBroker() {
-			ExecuteNonQuery("if not exists(select null from sys.databases where database_id = db_id() and is_broker_enabled = 1) begin declare @sql nvarchar(max) = N'alter database [' + db_name() + '] set enable_broker with rollback immediate'; exec sp_executesql @sql end");
+			db.ExecuteNonQuery("if not exists(select null from sys.databases where database_id = db_id() and is_broker_enabled = 1) begin declare @sql nvarchar(max) = N'alter database [' + db_name() + '] set enable_broker with rollback immediate'; exec sp_executesql @sql end");
 		}
 
 		public ServiceBrokerMessageType CreateMessageType(string name) {
-			ExecuteNonQuery($"if not exists(select null from sys.service_message_types where name = '{name}') create message type [{name}] validation = none");
+			db.ExecuteNonQuery($"if not exists(select null from sys.service_message_types where name = '{name}') create message type [{name}] validation = none");
 			return new ServiceBrokerMessageType(name);
 		}
 
 		public ServiceBrokerQueue CreateQueue(string name) {
-			ExecuteNonQuery($"if object_id('[{name}]') is null create queue [{name}]");
+			db.ExecuteNonQuery($"if object_id('[{name}]') is null create queue [{name}]");
 
 			return new ServiceBrokerQueue(db, name);
 		}
 
 		public ServiceBrokerContract CreateContract(string name, ServiceBrokerMessageType messageType) {
-			ExecuteNonQuery($"if not exists(select null from sys.service_contracts where name = '{name}') create contract [{name}]([{messageType.Name}] sent by initiator)");
+			db.ExecuteNonQuery($"if not exists(select null from sys.service_contracts where name = '{name}') create contract [{name}]([{messageType.Name}] sent by initiator)");
 			return new ServiceBrokerContract(name);
 		}
 
@@ -71,7 +71,7 @@ select @cid"));
 		public ServiceBrokerService CreateSinkService() {
 			if((int)db.ExecuteScalar($"select count(*) from sys.services where name = '{SinkServiceName}'") != 1) { 
 				if(db.ExecuteScalar($"select object_id('[{SinkServiceName} Handler]')") is DBNull)
-					ExecuteNonQuery(
+					db.ExecuteNonQuery(
 $@"create procedure [{SinkServiceName} Handler]
 as
 	declare @cid uniqueidentifier
@@ -92,16 +92,17 @@ as
 				end conversation @cid
 	end
 	commit");
-				ExecuteNonQuery($"if object_id('SinkQueue') is null create queue SinkQueue with activation(status = on, procedure_name = [{SinkServiceName} Handler], max_queue_readers = 1, execute as owner)");
-				ExecuteNonQuery($"create service [{SinkServiceName}] on queue SinkQueue");
+				db.ExecuteNonQuery($"if object_id('SinkQueue') is null create queue SinkQueue with activation(status = on, procedure_name = [{SinkServiceName} Handler], max_queue_readers = 1, execute as owner)");
+				db.ExecuteNonQuery($"create service [{SinkServiceName}] on queue SinkQueue");
 			}
 			return new ServiceBrokerService(SinkServiceName);
 		}
 
-				class TypedServiceBrokerQueue<T> : IWorkQueue<T>
+		class TypedServiceBrokerQueue<T> : IWorkQueue<T>
 		{
 			readonly SqlServerServiceBroker broker;
 			readonly ServiceBrokerQueue workQueue;
+			readonly JsonSerializer serializer = new JsonSerializer();
 			readonly ServiceBrokerService sinkService;
 			readonly ServiceBrokerService workerService;
 			readonly ServiceBrokerContract workerContract;
@@ -116,7 +117,6 @@ as
 				this.workItemMessageType = workItemMessageType;
 			}
 
-			readonly JsonSerializer serializer = new JsonSerializer();
 			public void Post(T item) {
 				var conversation = broker.BeginConversation(sinkService, workerService, workerContract);
 				var body = new MemoryStream();
@@ -128,7 +128,8 @@ as
 			public bool Receive(Action<T> handleItem) {
 				return workQueue.Receive((c, type, body) => {
 					using(var reader = new StreamReader(body))
-						handleItem((T)serializer.Deserialize(reader, typeof(T)));
+					using(var json = new JsonTextReader(reader))
+						handleItem(serializer.Deserialize<T>(json));
 					c.EndConversation();
 				});
 			}
@@ -141,11 +142,6 @@ as
 			var workerContract = CreateContract(messageType, workItemMessageType);
 			var workerService = workQueue.CreateService(messageType, workerContract);
 			return new TypedServiceBrokerQueue<T>(this, workerService, workQueue, workerContract, workItemMessageType);
-		}
-
-
-		void ExecuteNonQuery(string query) {
-			db.ExecuteNonQuery(query, _ => { });
 		}
 	}
 }

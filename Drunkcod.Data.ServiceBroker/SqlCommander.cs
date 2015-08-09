@@ -23,6 +23,11 @@ namespace Drunkcod.Data.ServiceBroker
 			}
 		}
 
+		public void ExecuteNonQuery(string query) {
+			ExecuteNonQuery(query, _ => { });
+		}
+
+
 		public object ExecuteScalar(string query) {
 			var cmd = NewCommand(query);
 			try {
