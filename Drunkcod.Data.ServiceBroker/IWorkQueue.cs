@@ -1,8 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.IO;
 
 namespace Drunkcod.Data.ServiceBroker
 {
@@ -10,5 +7,11 @@ namespace Drunkcod.Data.ServiceBroker
 	{
 		void Post(T item);
 		bool Receive(Action<T> handleItem);
+	}
+
+	public interface IWorkQueue
+	{
+		void Post<T>(T item);
+		bool Receive(Action<string, object> handleItem);
 	}
 }

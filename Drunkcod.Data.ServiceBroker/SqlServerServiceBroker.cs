@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json;
 
 namespace Drunkcod.Data.ServiceBroker
@@ -49,6 +50,12 @@ namespace Drunkcod.Data.ServiceBroker
 
 		public ServiceBrokerContract CreateContract(string name, ServiceBrokerMessageType messageType) {
 			db.ExecuteNonQuery($"if not exists(select null from sys.service_contracts where name = '{name}') create contract [{name}]([{messageType.Name}] sent by initiator)");
+			return new ServiceBrokerContract(name);
+		}
+
+		public ServiceBrokerContract CreateContract(string name, ServiceBrokerMessageType[] messageTypes) {
+			var sentMessages = string.Join(", ", messageTypes.Select(x => $"[{x.Name}] sent by initiator"));
+			db.ExecuteNonQuery($"if not exists(select null from sys.service_contracts where name = '{name}') create contract [{name}]({sentMessages})");
 			return new ServiceBrokerContract(name);
 		}
 
@@ -131,7 +138,42 @@ as
 					using(var json = new JsonTextReader(reader))
 						handleItem(serializer.Deserialize<T>(json));
 					c.EndConversation();
-				});
+				}, TimeSpan.Zero);
+			}
+		}
+
+		class UntypedServiceBrokerQueue : IWorkQueue
+		{
+			readonly SqlServerServiceBroker broker;
+			readonly ServiceBrokerQueue workQueue;
+			readonly JsonSerializer serializer = new JsonSerializer();
+			readonly ServiceBrokerService sinkService;
+			readonly ServiceBrokerService workerService;
+			readonly ServiceBrokerContract workerContract;
+
+			public UntypedServiceBrokerQueue(SqlServerServiceBroker broker, ServiceBrokerService workerService, ServiceBrokerQueue workQueue, ServiceBrokerContract workerContract) {
+				this.broker = broker;
+				this.sinkService = broker.CreateSinkService();
+				this.workerService = workerService;
+				this.workQueue = workQueue;
+				this.workerContract = workerContract;
+			}
+
+			public void Post<T>(T item) {
+				var conversation = broker.BeginConversation(sinkService, workerService, workerContract);
+				var body = new MemoryStream();
+				using(var writer = new StreamWriter(body))
+					serializer.Serialize(writer, item);
+				conversation.Send(new ServiceBrokerMessageType(typeof(T).FullName), body.ToArray());
+			}
+
+			public bool Receive(Action<string,object> handleItem) {
+				return workQueue.Receive((c, type, body) => {
+					using(var reader = new StreamReader(body))
+					using(var json = new JsonTextReader(reader))
+						handleItem(type.Name, serializer.Deserialize(json, Type.GetType(type.Name)));
+					c.EndConversation();
+				}, TimeSpan.Zero);
 			}
 		}
 
@@ -143,5 +185,14 @@ as
 			var workerService = workQueue.CreateService(messageType, workerContract);
 			return new TypedServiceBrokerQueue<T>(this, workerService, workQueue, workerContract, workItemMessageType);
 		}
+
+		public IWorkQueue OpenWorkQueue(string name, params Type[] wantedMessageTypes)
+		{
+			var messageTypes = Array.ConvertAll(wantedMessageTypes, x => CreateMessageType(x.FullName));
+			var workQueue = CreateQueue(name);
+			var workerContract = CreateContract(name, messageTypes);
+			var workerService = workQueue.CreateService(name, workerContract);
+			return new UntypedServiceBrokerQueue(this, workerService, workQueue, workerContract);
+		} 
 	}
 }

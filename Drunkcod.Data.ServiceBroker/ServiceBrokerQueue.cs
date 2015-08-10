@@ -18,11 +18,11 @@ namespace Drunkcod.Data.ServiceBroker
 			this.db = db;
 			this.queueName = queueName;
 			this.receive = 
-$@"receive top(1) 
+$@"waitfor(receive top(1) 
 	conversation_handle,
 	message_type_name,
 	message_body
-from [{queueName}]";
+from [{queueName}]), timeout @timeout ";
 		}
 
 		public ServiceBrokerService CreateService(string name, ServiceBrokerContract contract) {
@@ -30,8 +30,9 @@ from [{queueName}]";
 			return new ServiceBrokerService(name);
 		}
 
-		public bool Receive(ServiceBrokerMessageHandler handler) {
+		public bool Receive(ServiceBrokerMessageHandler handler, TimeSpan timeout) {
 			var cmd = db.NewCommand(receive);
+			cmd.Parameters.AddWithValue("@timeout", (int)timeout.TotalMilliseconds);
 			SqlDataReader reader = null;
 			var result = false;
 			var conversationQueries = new List<Tuple<string, Action<SqlParameterCollection>>>();
