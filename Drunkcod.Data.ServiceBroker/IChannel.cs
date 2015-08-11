@@ -1,17 +1,16 @@
 ﻿using System;
-using System.IO;
 
 namespace Drunkcod.Data.ServiceBroker
 {
-	public interface IWorkQueue<T>
+	public interface IChannel<T>
 	{
-		void Post(T item);
+		void Send(T item);
 		bool Receive(Action<T> handleItem);
 	}
 
-	public interface IWorkQueue
+	public interface IChannel
 	{
-		void Post<T>(T item);
+		void Send(object item);
 		bool Receive(Action<string, object> handleItem);
 	}
 }

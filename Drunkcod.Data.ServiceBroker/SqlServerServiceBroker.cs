@@ -1,6 +1,8 @@
 using System;
+using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Newtonsoft.Json;
 
 namespace Drunkcod.Data.ServiceBroker
@@ -105,94 +107,117 @@ as
 			return new ServiceBrokerService(SinkServiceName);
 		}
 
-		class TypedServiceBrokerQueue<T> : IWorkQueue<T>
+		struct ConversationEndpoint
 		{
 			readonly SqlServerServiceBroker broker;
-			readonly ServiceBrokerQueue workQueue;
+			readonly ServiceBrokerService initiator;
+			readonly ServiceBrokerService target;
+			readonly ServiceBrokerContract contract;
+
+			public ConversationEndpoint(SqlServerServiceBroker broker, ServiceBrokerService initiator, ServiceBrokerService target, ServiceBrokerContract contract)
+			{
+				this.broker = broker;
+				this.initiator = initiator; 
+				this.target = target;
+				this.contract = contract;
+			}
+
+			[Pure]
+			public ServiceBrokerConversation BeginConversation() {
+				return broker.BeginConversation(initiator, target, contract);
+			}
+		}
+
+		class ServiceBrokerChannelBase
+		{
 			readonly JsonSerializer serializer = new JsonSerializer();
-			readonly ServiceBrokerService sinkService;
-			readonly ServiceBrokerService workerService;
-			readonly ServiceBrokerContract workerContract;
+			readonly ServiceBrokerQueue queue;
+			readonly ConversationEndpoint endpoint;
+
+			protected ServiceBrokerChannelBase(ConversationEndpoint endpoint, ServiceBrokerQueue queue) {
+				this.queue = queue;
+				this.endpoint = endpoint;
+			}
+
+			protected void Send(ServiceBrokerMessageType messageType, byte[] body) {
+				var conversation = endpoint.BeginConversation();
+				conversation.Send(messageType, body);
+			}
+
+			protected bool Receive(ServiceBrokerMessageHandler handleMessage) {
+				return queue.Receive(handleMessage, TimeSpan.Zero);
+			}
+
+			protected byte[] Serialize(object item) {
+				var body = new MemoryStream();
+				using(var writer = new StreamWriter(body))
+					serializer.Serialize(writer, item);
+				return body.ToArray();
+			}
+
+			protected T Deserialize<T>(Stream body) {
+				using(var reader = new StreamReader(body))
+				using(var json = new JsonTextReader(reader))
+					return serializer.Deserialize<T>(json);
+			}
+
+			protected object Deserialize(Stream body, Type type) {
+				using(var reader = new StreamReader(body))
+				using(var json = new JsonTextReader(reader))
+					return serializer.Deserialize(json, type);
+			}
+		}
+
+		class ServiceBrokerTypedChannel<T> : ServiceBrokerChannelBase, IChannel<T>
+		{
 			readonly ServiceBrokerMessageType workItemMessageType;
 
-			public TypedServiceBrokerQueue(SqlServerServiceBroker broker, ServiceBrokerService workerService, ServiceBrokerQueue workQueue, ServiceBrokerContract workerContract, ServiceBrokerMessageType workItemMessageType) {
-				this.broker = broker;
-				this.sinkService = broker.CreateSinkService();
-				this.workerService = workerService;
-				this.workQueue = workQueue;
-				this.workerContract = workerContract;
+			public ServiceBrokerTypedChannel(ConversationEndpoint endpoint, ServiceBrokerQueue workQueue, ServiceBrokerMessageType workItemMessageType) : base(endpoint, workQueue) {
 				this.workItemMessageType = workItemMessageType;
 			}
 
-			public void Post(T item) {
-				var conversation = broker.BeginConversation(sinkService, workerService, workerContract);
-				var body = new MemoryStream();
-				using(var writer = new StreamWriter(body))
-					serializer.Serialize(writer, item);
-				conversation.Send(workItemMessageType, body.ToArray());
-			}
+			public void Send(T item) { Send(workItemMessageType, Serialize(item)); }
 
 			public bool Receive(Action<T> handleItem) {
-				return workQueue.Receive((c, type, body) => {
-					using(var reader = new StreamReader(body))
-					using(var json = new JsonTextReader(reader))
-						handleItem(serializer.Deserialize<T>(json));
+				return Receive((c, type, body) => {
+					handleItem(Deserialize<T>(body));
 					c.EndConversation();
-				}, TimeSpan.Zero);
+				});
 			}
 		}
 
-		class UntypedServiceBrokerQueue : IWorkQueue
+		class ServiceBrokerUntypedChannel : ServiceBrokerChannelBase, IChannel
 		{
-			readonly SqlServerServiceBroker broker;
-			readonly ServiceBrokerQueue workQueue;
-			readonly JsonSerializer serializer = new JsonSerializer();
-			readonly ServiceBrokerService sinkService;
-			readonly ServiceBrokerService workerService;
-			readonly ServiceBrokerContract workerContract;
-
-			public UntypedServiceBrokerQueue(SqlServerServiceBroker broker, ServiceBrokerService workerService, ServiceBrokerQueue workQueue, ServiceBrokerContract workerContract) {
-				this.broker = broker;
-				this.sinkService = broker.CreateSinkService();
-				this.workerService = workerService;
-				this.workQueue = workQueue;
-				this.workerContract = workerContract;
+			public ServiceBrokerUntypedChannel(ConversationEndpoint endpoint, ServiceBrokerQueue workQueue) : base(endpoint, workQueue) {
 			}
 
-			public void Post<T>(T item) {
-				var conversation = broker.BeginConversation(sinkService, workerService, workerContract);
-				var body = new MemoryStream();
-				using(var writer = new StreamWriter(body))
-					serializer.Serialize(writer, item);
-				conversation.Send(new ServiceBrokerMessageType(typeof(T).FullName), body.ToArray());
-			}
+			public void Send(object item) { Send(new ServiceBrokerMessageType(item.GetType().FullName), Serialize(item)); }
 
 			public bool Receive(Action<string,object> handleItem) {
-				return workQueue.Receive((c, type, body) => {
-					using(var reader = new StreamReader(body))
-					using(var json = new JsonTextReader(reader))
-						handleItem(type.Name, serializer.Deserialize(json, Type.GetType(type.Name)));
+				return Receive((c, type, body) => {
+					handleItem(type.Name, Deserialize(body, Type.GetType(type.Name)));
 					c.EndConversation();
-				}, TimeSpan.Zero);
+				});
 			}
 		}
 
-		public IWorkQueue<T> OpenWorkQueue<T>() {
+		public IChannel<T> OpenWorkQueue<T>() {
 			var messageType = typeof(T).FullName;
 			var workItemMessageType = CreateMessageType(messageType);
-			var workQueue = CreateQueue(messageType);
 			var workerContract = CreateContract(messageType, workItemMessageType);
+			var workQueue = CreateQueue(messageType);
 			var workerService = workQueue.CreateService(messageType, workerContract);
-			return new TypedServiceBrokerQueue<T>(this, workerService, workQueue, workerContract, workItemMessageType);
+			var endpoint = new ConversationEndpoint(this, CreateSinkService(), workerService, workerContract);
+			return new ServiceBrokerTypedChannel<T>(endpoint, workQueue, workItemMessageType);
 		}
 
-		public IWorkQueue OpenWorkQueue(string name, params Type[] wantedMessageTypes)
-		{
+		public IChannel OpenWorkQueue(string name, params Type[] wantedMessageTypes) {
 			var messageTypes = Array.ConvertAll(wantedMessageTypes, x => CreateMessageType(x.FullName));
-			var workQueue = CreateQueue(name);
 			var workerContract = CreateContract(name, messageTypes);
+			var workQueue = CreateQueue(name);
 			var workerService = workQueue.CreateService(name, workerContract);
-			return new UntypedServiceBrokerQueue(this, workerService, workQueue, workerContract);
+			var endpoint = new ConversationEndpoint(this, CreateSinkService(), workerService, workerContract);
+			return new ServiceBrokerUntypedChannel(endpoint, workQueue);
 		} 
 	}
 }

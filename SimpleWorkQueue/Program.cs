@@ -16,10 +16,10 @@ namespace SimpleWorkQueue
 			var workQueue = broker.OpenWorkQueue<string>();
 			Task.Factory.StartNew(() => {
 				for(var i = 0; i != 10; ++i) {
-					workQueue.Post(i.ToString());
+					workQueue.Send(i.ToString());
 					Thread.Sleep(250);
 				}
-				workQueue.Post("Bye.");
+				workQueue.Send("Bye.");
 			}, TaskCreationOptions.LongRunning);
 
 			for(var done = false; !done;) {
@@ -32,8 +32,8 @@ namespace SimpleWorkQueue
 */
 			var q2 = broker.OpenWorkQueue("MyQueue", typeof(int), typeof(string));
 
-			q2.Post(42);
-			q2.Post("Hello World!");
+			q2.Send(42);
+			q2.Send("Hello World!");
 			while(q2.Receive((type, value) => {
 				Console.WriteLine("{0} {1}", type, value);
 			}));
