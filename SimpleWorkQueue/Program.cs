@@ -13,7 +13,7 @@ namespace SimpleWorkQueue
 		static void Main(string[] args) {
 			var broker = new SqlServerServiceBroker("Server=.;Integrated Security=SSPI;Initial Catalog=WorkWork");
 /*
-			var workQueue = broker.OpenWorkQueue<string>();
+			var workQueue = broker.OpenChannel<string>();
 			Task.Factory.StartNew(() => {
 				for(var i = 0; i != 10; ++i) {
 					workQueue.Send(i.ToString());
@@ -30,7 +30,7 @@ namespace SimpleWorkQueue
 				});
 			}
 */
-			var q2 = broker.OpenWorkQueue("MyQueue", typeof(int), typeof(string));
+			var q2 = broker.OpenChannel("MyQueue", typeof(int), typeof(string));
 
 			q2.Send(42);
 			q2.Send("Hello World!");

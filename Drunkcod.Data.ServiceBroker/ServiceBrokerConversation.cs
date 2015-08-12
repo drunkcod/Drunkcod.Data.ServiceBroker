@@ -1,5 +1,6 @@
 using System;
 using System.Data.SqlClient;
+using System.IO;
 
 namespace Drunkcod.Data.ServiceBroker
 {
@@ -15,7 +16,7 @@ namespace Drunkcod.Data.ServiceBroker
 			this.conversationHandle = conversationHandle;
 		}
 
-		public void Send(ServiceBrokerMessageType messageType, byte[] body) {
+		public void Send(ServiceBrokerMessageType messageType, Stream body) {
 			db($"send on conversation @cid message type [{messageType.Name}](@body)", x => {
 				x.AddWithValue("@cid", conversationHandle);
 				x.AddWithValue("@body", body);
