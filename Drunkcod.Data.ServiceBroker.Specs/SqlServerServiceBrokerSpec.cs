@@ -12,7 +12,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 	public class SqlServerServiceBrokerSpec
 	{
 		readonly string DbName = $"{typeof(SqlServerServiceBroker).FullName}.Spec";
-		string ConnectionString = "Server=.;Integrated Security=SSPI";
+		const string ConnectionString = "Server=.;Integrated Security=SSPI";
 		SqlServerServiceBroker Broker;
 
 		[BeforeAll]
