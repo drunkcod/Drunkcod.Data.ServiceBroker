@@ -1,5 +1,7 @@
 using System;
+using System.CodeDom;
 using System.Collections.Generic;
+using System.Data.SqlClient;
 using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
@@ -184,13 +186,23 @@ as
 
 		class ServiceBrokerUntypedChannel : ServiceBrokerChannelBase, IChannel
 		{
+			readonly Type[] supportedTypes;
 			public ServiceBrokerUntypedChannel(
 				ConversationEndpoint endpoint, 
 				ServiceBrokerQueue workQueue,
-				JsonSerializer serializer) : base(endpoint, workQueue, serializer) {
+				JsonSerializer serializer, Type[] supporteTypes) : base(endpoint, workQueue, serializer) {
+					this.supportedTypes = supporteTypes;
 			}
 
-			public void Send(object item) { Send(new ServiceBrokerMessageType(item.GetType().FullName), Serialize(item)); }
+			public void Send(object item) {
+				try {
+					Send(new ServiceBrokerMessageType(item.GetType().FullName), Serialize(item));
+				} catch(SqlException ex) {
+					if(!supportedTypes.Contains(item.GetType()))
+						throw new InvalidOperationException("Unsupported type for channel", ex);
+					throw;
+				}
+			}
 
 			public bool Receive(Action<string,object> handleItem) {
 				return Queue.Receive((c, type, body) => {
@@ -214,7 +226,7 @@ as
 			var workerContract = CreateContract(name, messageTypes);
 			var workQueue = CreateQueue(name);
 			var endpoint = CreateEndpoint(name, workQueue, workerContract);
-			return new ServiceBrokerUntypedChannel(endpoint, workQueue, serializer);
+			return new ServiceBrokerUntypedChannel(endpoint, workQueue, serializer, wantedMessageTypes);
 		}
 
 		private ConversationEndpoint CreateEndpoint(string name, ServiceBrokerQueue workQueue, ServiceBrokerContract workerContract) {

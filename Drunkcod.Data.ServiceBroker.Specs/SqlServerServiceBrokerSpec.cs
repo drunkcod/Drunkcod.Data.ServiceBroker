@@ -61,5 +61,11 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 				() => (int)x == 42,
 				() => t == typeof(int).FullName)));
 		}
+
+		public void posting_unsupported_type_gives_InvalidOperationException() {
+			var initiator = Broker.OpenChannel("MyIntChannel", typeof(int));
+
+			Check.Exception<InvalidOperationException>(() => initiator.Send("Hello"));
+		}
 	}
 }
