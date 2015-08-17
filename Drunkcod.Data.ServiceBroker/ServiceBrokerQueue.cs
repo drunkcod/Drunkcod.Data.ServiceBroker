@@ -30,7 +30,7 @@ from [{queueName}]), timeout @timeout ";
 			return new ServiceBrokerService(name);
 		}
 
-		public bool Receive(ServiceBrokerMessageHandler handler, TimeSpan timeout) {
+		public bool TryReceive(ServiceBrokerMessageHandler handler, TimeSpan timeout) {
 			var cmd = db.NewCommand(receive);
 			cmd.Parameters.AddWithValue("@timeout", (int)timeout.TotalMilliseconds);
 			SqlDataReader reader = null;

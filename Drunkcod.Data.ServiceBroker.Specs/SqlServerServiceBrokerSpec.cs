@@ -44,7 +44,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			var target = Broker.OpenChannel<string>();
 
 			initiator.Send("Hello World!");
-			Check.That(() => target.Receive(x => Check.That(() => x == "Hello World!")));
+			Check.That(() => target.TryReceive(x => Check.That(() => x == "Hello World!")));
 		}
 
 		public void untyped_channel_roundtrip() {
@@ -52,12 +52,12 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			var target = Broker.OpenChannel("MyChannel", typeof(int), typeof(string));
 
 			initiator.Send("my string");
-			Check.That(() => target.Receive((t,x) => Check.That(
+			Check.That(() => target.TryReceive((t,x) => Check.That(
 				() => (string)x == "my string",
 				() => t == typeof(string).FullName)));
 
 			initiator.Send(42);
-			Check.That(() => target.Receive((t,x) => Check.That(
+			Check.That(() => target.TryReceive((t,x) => Check.That(
 				() => (int)x == 42,
 				() => t == typeof(int).FullName)));
 		}

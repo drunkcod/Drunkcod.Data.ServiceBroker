@@ -23,7 +23,7 @@ namespace SimpleWorkQueue
 			}, TaskCreationOptions.LongRunning);
 
 			for(var done = false; !done;) {
-				workQueue.Receive(x => {
+				workQueue.TryReceive(x => {
 					if(x == "Bye.")
 						done = true;
 					Console.WriteLine(x);
@@ -34,7 +34,7 @@ namespace SimpleWorkQueue
 
 			q2.Send(42);
 			q2.Send("Hello World!");
-			while(q2.Receive((type, value) => {
+			while(q2.TryReceive((type, value) => {
 				Console.WriteLine("{0} {1}", type, value);
 			}));
 		}
