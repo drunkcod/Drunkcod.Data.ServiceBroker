@@ -1,5 +1,4 @@
 using System;
-using System.CodeDom;
 using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Diagnostics.Contracts;
@@ -10,24 +9,6 @@ using Newtonsoft.Json;
 
 namespace Drunkcod.Data.ServiceBroker
 {
-	public struct ServiceBrokerMessageType
-	{
-		public readonly string Name;
-		internal ServiceBrokerMessageType(string name) { this.Name = name; }
-	}
-
-	public struct ServiceBrokerContract
-	{
-		public readonly string Name;
-		internal ServiceBrokerContract(string name) { this.Name = name; }
-	}
-
-	public struct ServiceBrokerService
-	{
-		public readonly string Name;
-		internal ServiceBrokerService(string name) { this.Name = name; }
-	}
-
 	public class SqlServerServiceBroker
 	{
 		const string ServiceBrokerEndDialog = "http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog";
@@ -128,20 +109,27 @@ as
 			static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 			readonly JsonSerializer serializer;
 			readonly ConversationEndpoint endpoint;
-			public readonly ServiceBrokerQueue Queue;
+			readonly ServiceBrokerQueue queue;
 
 			public ServiceBrokerChannel(ConversationEndpoint endpoint, ServiceBrokerQueue queue, JsonSerializer serializer) {
-				this.Queue = queue;
+				this.queue = queue;
 				this.endpoint = endpoint;
 				this.serializer = serializer;
 			}
 
-			public void Send(ServiceBrokerMessageType messageType, Stream body) {
+			public void Send(ServiceBrokerMessageType messageType, object item) {
 				var conversation = endpoint.BeginConversation();
-				conversation.Send(messageType, body);
+				conversation.Send(messageType, Serialize(item));
 			}
 
-			public Stream Serialize(object item) {
+			public bool TryReceive(Action<string, object> handleMessage, TimeSpan timeout) {
+				return queue.TryReceive((c, type, body) => {
+					handleMessage(type.Name, Deserialize(body, Type.GetType(type.Name)));
+					c.EndConversation();
+				}, timeout);
+			}
+
+			Stream Serialize(object item) {
 				var body = new MemoryStream();
 				using(var writer = new StreamWriter(body, Utf8NoBom, 512, true))
 					serializer.Serialize(writer, item);
@@ -149,13 +137,7 @@ as
 				return body;
 			}
 
-			public T Deserialize<T>(Stream body) {
-				using(var reader = new StreamReader(body, Utf8NoBom))
-				using(var json = new JsonTextReader(reader))
-					return serializer.Deserialize<T>(json);
-			}
-
-			public object Deserialize(Stream body, Type type) {
+			object Deserialize(Stream body, Type type) {
 				using(var reader = new StreamReader(body, Utf8NoBom))
 				using(var json = new JsonTextReader(reader))
 					return serializer.Deserialize(json, type);
@@ -172,12 +154,11 @@ as
 				this.workItemMessageType = workItemMessageType;
 			}
 
-			public void Send(T item) { channel.Send(workItemMessageType, channel.Serialize(item)); }
+			public void Send(T item) { channel.Send(workItemMessageType, item); }
 
 			public bool TryReceive(Action<T> handleItem, TimeSpan timeout) {
-				return channel.Queue.TryReceive((c, type, body) => {
-					handleItem(channel.Deserialize<T>(body));
-					c.EndConversation();
+				return channel.TryReceive((_, body) => {
+					handleItem((T)body);
 				}, timeout);
 			}
 		}
@@ -195,7 +176,7 @@ as
 
 			public void Send(object item) {
 				try {
-					channel.Send(new ServiceBrokerMessageType(item.GetType().FullName), channel.Serialize(item));
+					channel.Send(new ServiceBrokerMessageType(item.GetType().FullName), item);
 				} catch(SqlException ex) {
 					if(!supportedTypes.Contains(item.GetType()))
 						throw new InvalidOperationException("Unsupported type for channel", ex);
@@ -204,10 +185,7 @@ as
 			}
 
 			public bool TryReceive(Action<string,object> handleItem, TimeSpan timeout) {
-				return channel.Queue.TryReceive((c, type, body) => {
-					handleItem(type.Name, channel.Deserialize(body, Type.GetType(type.Name)));
-					c.EndConversation();
-				}, timeout);
+				return channel.TryReceive(handleItem, timeout);
 			}
 		}
 
