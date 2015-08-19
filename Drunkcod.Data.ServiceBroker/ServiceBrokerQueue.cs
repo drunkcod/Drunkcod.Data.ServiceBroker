@@ -8,6 +8,11 @@ namespace Drunkcod.Data.ServiceBroker
 {
 	public delegate void ServiceBrokerMessageHandler(ServiceBrokerConversation conversation, ServiceBrokerMessageType messageType, Stream body);
 
+	public class ServiceBrokerQueueMessage
+	{
+		public ServiceBrokerMessageType MessageType;
+	}
+
 	public class ServiceBrokerQueue
 	{
 		readonly SqlCommander db;
@@ -64,5 +69,19 @@ from [{queueName}]), timeout @timeout ";
 				cmd.Dispose();
 			}
 		}
+
+		public List<ServiceBrokerQueueMessage> Peek() {
+			using(var cmd = db.NewCommand($"select message_type_name from [{queueName}] with(nolock)")) {
+				cmd.Connection.Open();
+				using(var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection)) {
+					var messages = new List<ServiceBrokerQueueMessage>();
+					while(reader.Read())
+						messages.Add(new ServiceBrokerQueueMessage {
+							MessageType = new ServiceBrokerMessageType(reader.GetString(0))
+						});
+					return messages;
+				}
+			}
+        } 
 	}
 }

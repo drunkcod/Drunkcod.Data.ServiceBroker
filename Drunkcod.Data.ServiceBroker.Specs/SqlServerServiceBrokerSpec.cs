@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Cone;
 
 namespace Drunkcod.Data.ServiceBroker.Specs
@@ -66,6 +63,28 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			var initiator = Broker.OpenChannel("MyIntChannel", typeof(int));
 
 			Check.Exception<InvalidOperationException>(() => initiator.Send("Hello"));
+		}
+
+		public void can_peek_queue() {
+			var channel = Broker.OpenChannel<int>();
+			var queue = Broker.CreateQueue(typeof(int).FullName);
+			channel.Send(1);
+			channel.Send(2);
+
+
+			Action<int> checkOneLeft = _ => Check.That(() => queue.Peek().Count == 1);
+			Check.That(
+				() => queue.Peek().Count == 2,
+				() => channel.TryReceive(checkOneLeft));
+		}
+
+		public void peek_queue_fields_contains_message_type() {
+			var channel = Broker.OpenChannel<int>();
+			var queue = Broker.CreateQueue(typeof(int).FullName);
+			channel.Send(42);
+
+			var peekedMessage = queue.Peek().First();
+			Check.That(() => peekedMessage.MessageType.Name == typeof(int).FullName);
 		}
 	}
 }
