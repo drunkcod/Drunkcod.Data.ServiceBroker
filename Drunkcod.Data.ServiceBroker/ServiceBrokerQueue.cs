@@ -10,18 +10,21 @@ namespace Drunkcod.Data.ServiceBroker
 
 	public class ServiceBrokerQueueMessage
 	{
-		public ServiceBrokerMessageType MessageType;
+		public ServiceBrokerQueueMessage(ServiceBrokerMessageType messageType) {
+			this.MessageType = messageType;
+		}
+
+		public readonly ServiceBrokerMessageType MessageType;
 	}
 
 	public class ServiceBrokerQueue
 	{
 		readonly SqlCommander db;
-		readonly string queueName;
 		readonly string receive;
 
 		internal ServiceBrokerQueue(SqlCommander db, string queueName) {
 			this.db = db;
-			this.queueName = queueName;
+			this.Name = queueName;
 			this.receive = 
 $@"waitfor(receive top(1) 
 	conversation_handle,
@@ -30,8 +33,10 @@ $@"waitfor(receive top(1)
 from [{queueName}]), timeout @timeout ";
 		}
 
+		public string Name { get; }
+
 		public ServiceBrokerService CreateService(string name, ServiceBrokerContract contract) {
-			db.ExecuteNonQuery($"if not exists(select null from sys.services where name = '{name}') create service [{name}] on queue [{this.queueName}]([{contract.Name}])");
+			db.ExecuteNonQuery($"if not exists(select null from sys.services where name = '{name}') create service [{name}] on queue [{this.Name}]([{contract.Name}])");
 			return new ServiceBrokerService(name);
 		}
 
@@ -71,14 +76,14 @@ from [{queueName}]), timeout @timeout ";
 		}
 
 		public List<ServiceBrokerQueueMessage> Peek() {
-			using(var cmd = db.NewCommand($"select message_type_name from [{queueName}] with(nolock)")) {
+			using(var cmd = db.NewCommand($"select message_type_name from [{Name}] with(nolock)")) {
 				cmd.Connection.Open();
 				using(var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection)) {
 					var messages = new List<ServiceBrokerQueueMessage>();
 					while(reader.Read())
-						messages.Add(new ServiceBrokerQueueMessage {
-							MessageType = new ServiceBrokerMessageType(reader.GetString(0))
-						});
+						messages.Add(new ServiceBrokerQueueMessage(
+							new ServiceBrokerMessageType(reader.GetString(0))
+						));
 					return messages;
 				}
 			}

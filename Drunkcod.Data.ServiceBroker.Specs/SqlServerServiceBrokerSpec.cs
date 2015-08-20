@@ -36,6 +36,12 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			Broker.EnableBroker();
 		}
 
+		[AfterEach]
+		public void drop_user_queues() {
+			foreach(var item in Broker.GetQueues())
+				Broker.DeleteQueue(item.Name);
+		}
+
 		public void typed_channel_roundtrip() {
 			var initiator = Broker.OpenChannel<string>();
 			var target = Broker.OpenChannel<string>();
@@ -71,7 +77,6 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			channel.Send(1);
 			channel.Send(2);
 
-
 			Action<int> checkOneLeft = _ => Check.That(() => queue.Peek().Count == 1);
 			Check.That(
 				() => queue.Peek().Count == 2,
@@ -85,6 +90,18 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 
 			var peekedMessage = queue.Peek().First();
 			Check.That(() => peekedMessage.MessageType.Name == typeof(int).FullName);
+		}
+
+		public void can_list_user_queues() {
+			Broker.OpenChannel<int>();
+			Broker.OpenChannel("MyChannel", typeof(int), typeof(string));
+
+			var queues = Broker.GetQueues().OrderBy(x => x.Name).ToList();
+			Check.That(
+				() => queues.Count == 3,
+				() => queues[0].Name == SqlServerServiceBroker.SinkName,
+				() => queues[1].Name == "MyChannel",
+				() => queues[2].Name == "System.Int32");
 		}
 	}
 }

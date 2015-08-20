@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics.Contracts;
 using System.IO;
@@ -12,7 +13,7 @@ namespace Drunkcod.Data.ServiceBroker
 	public class SqlServerServiceBroker
 	{
 		const string ServiceBrokerEndDialog = "http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog";
-		const string SinkServiceName = "Drunkcod.Data.ServiceBroker.SinkService";
+		public const string SinkName = "Drunkcod.Data.ServiceBroker.Sink";
 		readonly SqlCommander db;
 		readonly JsonSerializer serializer = new JsonSerializer();
 		public SqlServerServiceBroker(string connectionString) {
@@ -32,6 +33,22 @@ namespace Drunkcod.Data.ServiceBroker
 			db.ExecuteNonQuery($"if object_id('[{name}]') is null create queue [{name}]");
 			return new ServiceBrokerQueue(db, name);
 		}
+
+		public void DeleteQueue(string name) {
+			db.ExecuteNonQuery(
+$@"drop service [{name}]
+drop queue [{name}]"
+			);
+		}
+
+		public IEnumerable<ServiceBrokerQueue> GetQueues() {
+			using(var cmd = db.NewCommand("select name from sys.service_queues where is_ms_shipped = 0")) {
+				cmd.Connection.Open();
+				using(var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection))
+					while(reader.Read())
+						yield return new ServiceBrokerQueue(db, reader.GetString(0));				
+			}
+		} 
 
 		public ServiceBrokerContract CreateContract(string name, IEnumerable<ServiceBrokerMessageType> messageTypes) {
 			var sentMessages = string.Join(", ", messageTypes.Select(x => $"[{x.Name}] sent by initiator"));
@@ -56,10 +73,10 @@ select @cid"));
 		}
 
 		public ServiceBrokerService CreateSinkService() {
-			if((int)db.ExecuteScalar($"select count(*) from sys.services where name = '{SinkServiceName}'") != 1) { 
-				if(db.ExecuteScalar($"select object_id('[{SinkServiceName} Handler]')") is DBNull)
+			if((int)db.ExecuteScalar($"select count(*) from sys.services where name = '{SinkName}'") != 1) { 
+				if(db.ExecuteScalar($"select object_id('[{SinkName} Handler]')") is DBNull)
 					db.ExecuteNonQuery(
-$@"create procedure [{SinkServiceName} Handler]
+$@"create procedure [{SinkName} Handler]
 as
 	declare @cid uniqueidentifier
 	declare @message_type sysname
@@ -69,7 +86,7 @@ as
 			receive top(1)
 				@cid = conversation_handle,
 				@message_type = message_type_name
-			from SinkQueue
+			from [{SinkName}]
 
 			if @@rowcount = 0 
 				break
@@ -77,10 +94,10 @@ as
 				end conversation @cid
 	end
 	commit");
-				db.ExecuteNonQuery($"if object_id('SinkQueue') is null create queue SinkQueue with activation(status = on, procedure_name = [{SinkServiceName} Handler], max_queue_readers = 1, execute as owner)");
-				db.ExecuteNonQuery($"create service [{SinkServiceName}] on queue SinkQueue");
+				db.ExecuteNonQuery($"if object_id('[{SinkName}]') is null create queue [{SinkName}] with activation(status = on, procedure_name = [{SinkName} Handler], max_queue_readers = 1, execute as owner)");
+				db.ExecuteNonQuery($"create service [{SinkName}] on queue [{SinkName}]");
 			}
-			return new ServiceBrokerService(SinkServiceName);
+			return new ServiceBrokerService(SinkName);
 		}
 
 		struct ConversationEndpoint
