@@ -11,6 +11,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 		readonly string DbName = $"{typeof(SqlServerServiceBroker).FullName}.Spec";
 		const string ConnectionString = "Server=.;Integrated Security=SSPI";
 		SqlServerServiceBroker Broker;
+		string BrokerConnectionString => ConnectionString + ";Database=" + DbName;
 
 		[BeforeAll]
 		public void create_empty_database() {
@@ -23,8 +24,9 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 
 		[AfterAll]
 		public void drop_test_database() {
+			SqlConnection.ClearAllPools();
 			using(var db = new SqlConnection(ConnectionString))
-			using(var cmd = new SqlCommand($"alter database [{DbName}] set single_user with rollback immediate; drop database [{DbName}]", db)) {
+			using(var cmd = new SqlCommand($"drop database [{DbName}]", db)) {
 				db.Open();
 				cmd.ExecuteNonQuery();
 			}
@@ -32,7 +34,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 
 		[BeforeEach]
 		public void enable_broker() {
-			Broker = new SqlServerServiceBroker(ConnectionString + ";Database=" + DbName);
+			Broker = new SqlServerServiceBroker(BrokerConnectionString);
 			Broker.EnableBroker();
 		}
 
