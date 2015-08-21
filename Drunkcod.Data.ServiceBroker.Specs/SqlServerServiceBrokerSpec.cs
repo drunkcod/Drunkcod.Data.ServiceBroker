@@ -100,10 +100,36 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 
 			var queues = Broker.GetQueues().OrderBy(x => x.Name).ToList();
 			Check.That(
-				() => queues.Count == 3,
-				() => queues[0].Name == SqlServerServiceBroker.SinkName,
-				() => queues[1].Name == "MyChannel",
-				() => queues[2].Name == "System.Int32");
+				() => queues.Count == 2,
+				() => queues[0].Name == "MyChannel",
+				() => queues[1].Name == "System.Int32");
+		}
+
+		public void queue_statistics_message_counts() {
+			var channel = Broker.OpenChannel("MyChannel", typeof(int), typeof(string));
+
+			channel.Send(1);
+			channel.Send(2);
+			channel.Send(3);
+			channel.Send("Hello World");
+
+			var stats = Broker.CreateQueue("MyChannel").GetStatistics();
+			Check.That(
+				() => stats.MessageCount == 4,
+				() => stats["System.Int32"].Count == 3,
+				() => stats["System.String"].Count == 1);
+		}
+
+		public void queue_statistics_contains_message_type() {
+			var channel = Broker.OpenChannel("MyChannel", typeof(int), typeof(string));
+
+			channel.Send(1);
+			channel.Send(2);
+
+			var stats = Broker.CreateQueue("MyChannel").GetStatistics();
+			Check.That(
+				() => stats.Count() == 1,
+				() => stats.First().MessageType.Name == "System.Int32");
 		}
 	}
 }

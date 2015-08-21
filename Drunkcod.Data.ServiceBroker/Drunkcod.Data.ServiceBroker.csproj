@@ -56,6 +56,7 @@
     <Compile Include="ServiceBrokerConversation.cs" />
     <Compile Include="ServiceBrokerMessageType.cs" />
     <Compile Include="ServiceBrokerQueue.cs" />
+    <Compile Include="ServiceBrokerQueueMessage.cs" />
     <Compile Include="ServiceBrokerService.cs" />
     <Compile Include="SqlCommander.cs" />
     <Compile Include="SqlServerServiceBroker.cs" />

@@ -42,7 +42,8 @@ drop queue [{name}]"
 		}
 
 		public IEnumerable<ServiceBrokerQueue> GetQueues() {
-			using(var cmd = db.NewCommand("select name from sys.service_queues where is_ms_shipped = 0")) {
+			using(var cmd = db.NewCommand("select name from sys.service_queues where is_ms_shipped = 0 and name != @sink_queue")) {
+				cmd.Parameters.AddWithValue("@sink_queue", SinkName);
 				cmd.Connection.Open();
 				using(var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection))
 					while(reader.Read())
