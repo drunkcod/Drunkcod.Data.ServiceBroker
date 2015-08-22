@@ -52,11 +52,13 @@
   <ItemGroup>
     <Compile Include="IChannel.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="QueueStatisticsRow.cs" />
     <Compile Include="ServiceBrokerContract.cs" />
     <Compile Include="ServiceBrokerConversation.cs" />
     <Compile Include="ServiceBrokerMessageType.cs" />
     <Compile Include="ServiceBrokerQueue.cs" />
     <Compile Include="ServiceBrokerQueueMessage.cs" />
+    <Compile Include="ServiceBrokerQueueStatistics.cs" />
     <Compile Include="ServiceBrokerService.cs" />
     <Compile Include="SqlCommander.cs" />
     <Compile Include="SqlServerServiceBroker.cs" />

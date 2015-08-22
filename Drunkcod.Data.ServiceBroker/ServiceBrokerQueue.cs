@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -10,36 +9,6 @@ using System.Linq;
 namespace Drunkcod.Data.ServiceBroker
 {
 	public delegate void ServiceBrokerMessageHandler(ServiceBrokerConversation conversation, ServiceBrokerMessageType messageType, Stream body);
-
-	public struct QueueStatisticsRow
-	{
-		public readonly ServiceBrokerMessageType MessageType;
-		public readonly int Count;
-
-		public QueueStatisticsRow(ServiceBrokerMessageType messageType, int count) {
-			this.MessageType = messageType;
-			this.Count = count;
-		}
-	}
-
-	public class ServiceBrokerQueueStatistics : IEnumerable<QueueStatisticsRow>
-	{
-		readonly Dictionary<string,QueueStatisticsRow> rows = new Dictionary<string, QueueStatisticsRow>(); 
-
-		public int MessageCount => rows.Sum(x => x.Value.Count);
-
-		public QueueStatisticsRow this[string name] => rows[name];
-
-		internal void Add(string name, QueueStatisticsRow row) {
-			rows.Add(name, row);
-		}
-
-		IEnumerator<QueueStatisticsRow> IEnumerable<QueueStatisticsRow>.GetEnumerator() {
-			return rows.Values.GetEnumerator();
-		}
-
-		IEnumerator IEnumerable.GetEnumerator() { return rows.Values.GetEnumerator(); }
-	}
 
 	public class ServiceBrokerQueue
 	{

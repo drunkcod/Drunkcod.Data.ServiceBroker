@@ -219,7 +219,7 @@ as
 			return new ServiceBrokerUntypedChannel(NewChannel(name, messageTypes), wantedMessageTypes);
 		}
 
-		private ServiceBrokerChannel NewChannel(string name, ServiceBrokerMessageType[] messageTypes) {
+		private ServiceBrokerChannel NewChannel(string name, IEnumerable<ServiceBrokerMessageType> messageTypes) {
 			var workerContract = CreateContract(name, messageTypes);
 			var workQueue = CreateQueue(name);
 			var endpoint = CreateEndpoint(name, workQueue, workerContract);
