@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
 using System.Data.SqlClient;
 using System.IO;
@@ -13,17 +12,25 @@ namespace Drunkcod.Data.ServiceBroker
 	public class ServiceBrokerQueue
 	{
 		readonly SqlCommander db;
+		readonly string receiveAny;
 		readonly string receive;
 
 		internal ServiceBrokerQueue(SqlCommander db, string queueName) {
 			this.db = db;
 			this.Name = queueName;
-			this.receive = 
+			this.receiveAny = 
 $@"waitfor(receive top(1) 
 	conversation_handle,
 	message_type_name,
 	message_body
 from [{queueName}]), timeout @timeout ";
+			this.receive = 
+$@"waitfor(receive top(1) 
+	conversation_handle,
+	message_type_name,
+	message_body
+from [{queueName}]
+where conversation_handle = @conversation), timeout @timeout ";
 		}
 
 		public string Name { get; }
@@ -34,8 +41,44 @@ from [{queueName}]), timeout @timeout ";
 		}
 
 		public bool TryReceive(ServiceBrokerMessageHandler handler, TimeSpan timeout) {
+			var cmd = db.NewCommand(receiveAny);
+			cmd.Parameters.AddWithValue("@timeout", (int)timeout.TotalMilliseconds);
+			SqlDataReader reader = null;
+			var result = false;
+			var conversationQueries = new List<Tuple<string, Action<SqlParameterCollection>>>();
+			try {
+				cmd.Connection.Open();
+				cmd.Transaction = cmd.Connection.BeginTransaction();
+				reader = cmd.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
+				if (reader.Read()) {
+					var conversation = new ServiceBrokerConversation((query, setup) => conversationQueries.Add(Tuple.Create(query, setup)),  reader.GetGuid(0));
+					handler(conversation, new ServiceBrokerMessageType(reader.GetString(1)), reader.GetStream(2));
+					result = true;
+				}
+				reader.Close();
+				foreach(var item in conversationQueries) {
+					cmd.Parameters.Clear();
+					cmd.CommandText = item.Item1;
+					item.Item2(cmd.Parameters);
+					cmd.ExecuteNonQuery();
+				}
+				cmd.Transaction?.Commit();
+				return result;
+			} catch {
+				cmd.Transaction?.Rollback();
+				throw;
+			} finally {
+				reader?.Dispose();
+				cmd.Transaction?.Dispose();
+				cmd.Connection.Dispose();
+				cmd.Dispose();
+			}
+		}
+
+		public bool TryReceive(ServiceBrokerConversation sourceConversation, ServiceBrokerMessageHandler handler, TimeSpan timeout) {
 			var cmd = db.NewCommand(receive);
 			cmd.Parameters.AddWithValue("@timeout", (int)timeout.TotalMilliseconds);
+			cmd.Parameters.AddWithValue("@conversation", sourceConversation.Handle);
 			SqlDataReader reader = null;
 			var result = false;
 			var conversationQueries = new List<Tuple<string, Action<SqlParameterCollection>>>();

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Data.SqlClient;
 using System.Linq;
+using System.Text;
 using Cone;
 
 namespace Drunkcod.Data.ServiceBroker.Specs
@@ -130,6 +131,25 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			Check.That(
 				() => stats.Count() == 1,
 				() => stats.First().MessageType.Name == "System.Int32");
+		}
+
+		public void conversation_multicast() {
+			var myQ = Broker.CreateQueue("MyQueue");
+			var myMessage = Broker.CreateMessageType("MyMessage");
+			var myContract = Broker.CreateContract("MyContract", myMessage);
+			var myService = myQ.CreateService("MyQueue", myContract);
+
+			var c1 = Broker.BeginConversation(myService, myService, myContract);
+			var c2 = Broker.BeginConversation(myService, myService, myContract);
+
+			Broker.Send(new[] { c1, c2 }, myMessage, Encoding.UTF8.GetBytes("Hello World!"));
+
+			ServiceBrokerMessageHandler checkHelloWorld = (c, t, b) => {
+			};
+			Check.That(
+				() => myQ.TryReceive(Broker.GetTargetConversation(c1), checkHelloWorld, TimeSpan.Zero),
+				() => myQ.TryReceive(Broker.GetTargetConversation(c2), checkHelloWorld, TimeSpan.Zero)
+			);
 		}
 	}
 }

@@ -47,9 +47,13 @@ drop queue [{name}]"
 				cmd.Connection.Open();
 				using(var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection))
 					while(reader.Read())
-						yield return new ServiceBrokerQueue(db, reader.GetString(0));				
+						yield return new ServiceBrokerQueue(db, reader.GetString(0));
 			}
 		} 
+
+		public ServiceBrokerContract CreateContract(string name, params ServiceBrokerMessageType[] messageTypes) {
+			return CreateContract(name, (IEnumerable<ServiceBrokerMessageType>)messageTypes);
+		}
 
 		public ServiceBrokerContract CreateContract(string name, IEnumerable<ServiceBrokerMessageType> messageTypes) {
 			var sentMessages = string.Join(", ", messageTypes.Select(x => $"[{x.Name}] sent by initiator"));
@@ -58,8 +62,8 @@ drop queue [{name}]"
 		}
 
 		public ServiceBrokerConversation BeginConversation(ServiceBrokerService from, ServiceBrokerService to, ServiceBrokerContract contract) {
-			return new ServiceBrokerConversation(db.ExecuteNonQuery, (Guid)db.ExecuteScalar(
-				$@"declare @cid uniqueidentifier
+			return OpenConversation((Guid)db.ExecuteScalar(
+$@"declare @cid uniqueidentifier
 begin dialog @cid
 from service [{from.Name}]
 to service '{to.Name}'
@@ -71,6 +75,16 @@ select @cid"));
 
 		public ServiceBrokerConversation OpenConversation(Guid conversationHandle) {
 			return new ServiceBrokerConversation(db.ExecuteNonQuery, conversationHandle);
+		}
+
+		public ServiceBrokerConversation GetTargetConversation(ServiceBrokerConversation initiator) {
+			return OpenConversation((Guid)db.ExecuteScalar(
+$@"select 
+	target_handle = target.conversation_handle
+from sys.conversation_endpoints initiator
+join sys.conversation_endpoints target on initiator.conversation_id = target.conversation_id
+where initiator.conversation_handle = @cid
+and initiator.conversation_handle != target.conversation_handle", x => x.AddWithValue("@cid", initiator.Handle)));
 		}
 
 		public ServiceBrokerService CreateSinkService() {
@@ -100,6 +114,11 @@ as
 			}
 			return new ServiceBrokerService(SinkName);
 		}
+
+		public void Send(IEnumerable<ServiceBrokerConversation> conversations, ServiceBrokerMessageType messageType, byte[] body) {
+			foreach(var item in conversations)
+				item.Send(messageType, new MemoryStream(body, false));
+		} 
 
 		struct ConversationEndpoint
 		{
@@ -213,8 +232,7 @@ as
 			return new ServiceBrokerTypedChannel<T>(NewChannel(name, new [] { workItemMessageType }), workItemMessageType);
 		}
 
-		public IChannel OpenChannel(string name, params Type[] wantedMessageTypes)
-		{
+		public IChannel OpenChannel(string name, params Type[] wantedMessageTypes) {
 			var messageTypes = Array.ConvertAll(wantedMessageTypes, x => CreateMessageType(x.FullName));
 			return new ServiceBrokerUntypedChannel(NewChannel(name, messageTypes), wantedMessageTypes);
 		}

@@ -5,6 +5,7 @@ namespace Drunkcod.Data.ServiceBroker
 {
 	public class SqlCommander
 	{
+		static Action<SqlParameterCollection> NoSetup = _ => { };
 		readonly string connectionString;
 
 		public SqlCommander(string connectionString) {
@@ -24,13 +25,17 @@ namespace Drunkcod.Data.ServiceBroker
 		}
 
 		public void ExecuteNonQuery(string query) {
-			ExecuteNonQuery(query, _ => { });
+			ExecuteNonQuery(query, NoSetup);
 		}
 
-
 		public object ExecuteScalar(string query) {
+			return ExecuteScalar(query, NoSetup);
+		}
+
+		public object ExecuteScalar(string query, Action<SqlParameterCollection> setup) {
 			var cmd = NewCommand(query);
 			try {
+				setup(cmd.Parameters);
 				cmd.Connection.Open();
 				return cmd.ExecuteScalar();
 			} finally {

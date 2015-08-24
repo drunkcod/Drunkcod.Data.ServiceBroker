@@ -11,6 +11,8 @@ namespace Drunkcod.Data.ServiceBroker
 		readonly NonQueryHandler db;
 		readonly Guid conversationHandle;
 
+		public Guid Handle => conversationHandle;
+
 		internal ServiceBrokerConversation(NonQueryHandler db, Guid conversationHandle) {
 			this.db = db;
 			this.conversationHandle = conversationHandle;
