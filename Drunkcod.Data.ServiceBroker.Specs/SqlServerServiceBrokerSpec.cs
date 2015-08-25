@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Data.SqlClient;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Cone;
@@ -145,6 +146,9 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			Broker.Send(new[] { c1, c2 }, myMessage, Encoding.UTF8.GetBytes("Hello World!"));
 
 			ServiceBrokerMessageHandler checkHelloWorld = (c, t, b) => {
+				Check.That(
+					() => t.Name == "MyMessage",
+					() => new StreamReader(b).ReadToEnd() == "Hello World!");
 			};
 			Check.That(
 				() => myQ.TryReceive(Broker.GetTargetConversation(c1), checkHelloWorld, TimeSpan.Zero),

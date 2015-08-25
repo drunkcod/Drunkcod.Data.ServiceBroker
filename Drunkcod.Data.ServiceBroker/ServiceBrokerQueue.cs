@@ -43,56 +43,37 @@ where conversation_handle = @conversation), timeout @timeout ";
 		public bool TryReceive(ServiceBrokerMessageHandler handler, TimeSpan timeout) {
 			var cmd = db.NewCommand(receiveAny);
 			cmd.Parameters.AddWithValue("@timeout", (int)timeout.TotalMilliseconds);
-			SqlDataReader reader = null;
-			var result = false;
-			var conversationQueries = new List<Tuple<string, Action<SqlParameterCollection>>>();
-			try {
-				cmd.Connection.Open();
-				cmd.Transaction = cmd.Connection.BeginTransaction();
-				reader = cmd.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
-				if (reader.Read()) {
-					var conversation = new ServiceBrokerConversation((query, setup) => conversationQueries.Add(Tuple.Create(query, setup)),  reader.GetGuid(0));
-					handler(conversation, new ServiceBrokerMessageType(reader.GetString(1)), reader.GetStream(2));
-					result = true;
-				}
-				reader.Close();
-				foreach(var item in conversationQueries) {
-					cmd.Parameters.Clear();
-					cmd.CommandText = item.Item1;
-					item.Item2(cmd.Parameters);
-					cmd.ExecuteNonQuery();
-				}
-				cmd.Transaction?.Commit();
-				return result;
-			} catch {
-				cmd.Transaction?.Rollback();
-				throw;
-			} finally {
-				reader?.Dispose();
-				cmd.Transaction?.Dispose();
-				cmd.Connection.Dispose();
-				cmd.Dispose();
-			}
+			return TryReceiveCore(handler, cmd);
 		}
 
 		public bool TryReceive(ServiceBrokerConversation sourceConversation, ServiceBrokerMessageHandler handler, TimeSpan timeout) {
 			var cmd = db.NewCommand(receive);
 			cmd.Parameters.AddWithValue("@timeout", (int)timeout.TotalMilliseconds);
 			cmd.Parameters.AddWithValue("@conversation", sourceConversation.Handle);
+			return TryReceiveCore(handler, cmd);
+		}
+
+		private static bool TryReceiveCore(ServiceBrokerMessageHandler handler, SqlCommand cmd)
+		{
 			SqlDataReader reader = null;
 			var result = false;
 			var conversationQueries = new List<Tuple<string, Action<SqlParameterCollection>>>();
-			try {
+			try
+			{
 				cmd.Connection.Open();
 				cmd.Transaction = cmd.Connection.BeginTransaction();
 				reader = cmd.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
-				if (reader.Read()) {
-					var conversation = new ServiceBrokerConversation((query, setup) => conversationQueries.Add(Tuple.Create(query, setup)),  reader.GetGuid(0));
+				if (reader.Read())
+				{
+					var conversation =
+						new ServiceBrokerConversation((query, setup) => conversationQueries.Add(Tuple.Create(query, setup)),
+							reader.GetGuid(0));
 					handler(conversation, new ServiceBrokerMessageType(reader.GetString(1)), reader.GetStream(2));
 					result = true;
 				}
 				reader.Close();
-				foreach(var item in conversationQueries) {
+				foreach (var item in conversationQueries)
+				{
 					cmd.Parameters.Clear();
 					cmd.CommandText = item.Item1;
 					item.Item2(cmd.Parameters);
@@ -100,10 +81,14 @@ where conversation_handle = @conversation), timeout @timeout ";
 				}
 				cmd.Transaction?.Commit();
 				return result;
-			} catch {
+			}
+			catch
+			{
 				cmd.Transaction?.Rollback();
 				throw;
-			} finally {
+			}
+			finally
+			{
 				reader?.Dispose();
 				cmd.Transaction?.Dispose();
 				cmd.Connection.Dispose();
