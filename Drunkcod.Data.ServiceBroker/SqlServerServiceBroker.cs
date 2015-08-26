@@ -16,6 +16,11 @@ namespace Drunkcod.Data.ServiceBroker
 		public const string SinkName = "Drunkcod.Data.ServiceBroker.Sink";
 		readonly SqlCommander db;
 		readonly JsonSerializer serializer = new JsonSerializer();
+
+		public SqlServerServiceBroker(SqlCommander db) {
+			this.db = db;
+		}
+
 		public SqlServerServiceBroker(string connectionString) {
 			this.db = new SqlCommander(connectionString);
 		}
@@ -35,10 +40,9 @@ namespace Drunkcod.Data.ServiceBroker
 		}
 
 		public void DeleteQueue(string name) {
-			db.ExecuteNonQuery(
-$@"drop service [{name}]
-drop queue [{name}]"
-			);
+			foreach(var service in new ServiceBrokerQueue(db, name).GetServices())
+				db.ExecuteNonQuery($"drop service [{service.Name}]");
+			db.ExecuteNonQuery($"drop queue [{name}]");
 		}
 
 		public IEnumerable<ServiceBrokerQueue> GetQueues() {
@@ -52,12 +56,25 @@ drop queue [{name}]"
 		} 
 
 		public ServiceBrokerContract CreateContract(string name, params ServiceBrokerMessageType[] messageTypes) {
-			return CreateContract(name, (IEnumerable<ServiceBrokerMessageType>)messageTypes);
+			return CreateContract(name, messageTypes, new ServiceBrokerMessageType[0]);
 		}
 
-		public ServiceBrokerContract CreateContract(string name, IEnumerable<ServiceBrokerMessageType> messageTypes) {
-			var sentMessages = string.Join(", ", messageTypes.Select(x => $"[{x.Name}] sent by initiator"));
-			db.ExecuteNonQuery($"if not exists(select null from sys.service_contracts where name = '{name}') create contract [{name}]({sentMessages})");
+		public ServiceBrokerContract CreateContract(string name, 
+			IEnumerable<ServiceBrokerMessageType> sentByInitiator,
+			IEnumerable<ServiceBrokerMessageType> sentByTarget) {
+			var query = new StringBuilder($"if not exists(select null from sys.service_contracts where name = '{name}') create contract [{name}](");
+			var sep = string.Empty;
+			foreach(var item in sentByInitiator) {
+				query.AppendFormat("{0}[{1}] sent by initiator", sep, item.Name);
+				sep = ", ";
+			}
+			foreach(var item in sentByTarget) {
+				query.AppendFormat("{0}[{1}] sent by target", sep, item.Name);
+				sep = ", ";
+			}
+			if(sep == string.Empty)
+				throw new InvalidOperationException("Need at least one message type");
+			db.ExecuteNonQuery(query.Append(")").ToString());
 			return new ServiceBrokerContract(name);
 		}
 
@@ -205,7 +222,6 @@ as
 			readonly ServiceBrokerChannel channel;
 			readonly Type[] supportedTypes;
 
-
 			public ServiceBrokerUntypedChannel(ServiceBrokerChannel channel, Type[] supporteTypes) {
 				this.channel = channel;
 				this.supportedTypes = supporteTypes;
@@ -237,7 +253,7 @@ as
 			return new ServiceBrokerUntypedChannel(NewChannel(name, messageTypes), wantedMessageTypes);
 		}
 
-		private ServiceBrokerChannel NewChannel(string name, IEnumerable<ServiceBrokerMessageType> messageTypes) {
+		private ServiceBrokerChannel NewChannel(string name, ServiceBrokerMessageType[] messageTypes) {
 			var workerContract = CreateContract(name, messageTypes);
 			var workQueue = CreateQueue(name);
 			var endpoint = CreateEndpoint(name, workQueue, workerContract);
@@ -245,9 +261,9 @@ as
 			return channel;
 		}
 
-		private ConversationEndpoint CreateEndpoint(string name, ServiceBrokerQueue workQueue, ServiceBrokerContract workerContract) {
-			var workerService = workQueue.CreateService(name, workerContract);
-			var endpoint = new ConversationEndpoint(this, CreateSinkService(), workerService, workerContract);
+		private ConversationEndpoint CreateEndpoint(string name, ServiceBrokerQueue queue, ServiceBrokerContract contract) {
+			var service = queue.CreateService(name, contract);
+			var endpoint = new ConversationEndpoint(this, CreateSinkService(), service, contract);
 			return endpoint;
 		}
 	}

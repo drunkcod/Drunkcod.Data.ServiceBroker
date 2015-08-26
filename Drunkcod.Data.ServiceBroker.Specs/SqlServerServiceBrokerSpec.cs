@@ -12,6 +12,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 	{
 		readonly string DbName = $"{typeof(SqlServerServiceBroker).FullName}.Spec";
 		const string ConnectionString = "Server=.;Integrated Security=SSPI";
+		SqlCommander Db;
 		SqlServerServiceBroker Broker;
 		string BrokerConnectionString => ConnectionString + ";Database=" + DbName;
 
@@ -36,7 +37,8 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 
 		[BeforeEach]
 		public void enable_broker() {
-			Broker = new SqlServerServiceBroker(BrokerConnectionString);
+			Db = new SqlCommander(BrokerConnectionString);
+			Broker = new SqlServerServiceBroker(Db);
 			Broker.EnableBroker();
 		}
 
@@ -154,6 +156,54 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 				() => myQ.TryReceive(Broker.GetTargetConversation(c1), checkHelloWorld, TimeSpan.Zero),
 				() => myQ.TryReceive(Broker.GetTargetConversation(c2), checkHelloWorld, TimeSpan.Zero)
 			);
+		}
+
+		public void request_reply() {
+			var initiatorQueue = Broker.CreateQueue("Initiator");
+			var targetQueue = Broker.CreateQueue("Target");
+			var requestMessage = Broker.CreateMessageType("Request");
+			var replyMessage = Broker.CreateMessageType("Reply");
+			var contract = Broker.CreateContract("RequestReply", 
+				sentByInitiator: new [] { requestMessage }, 
+				sentByTarget:  new[] { replyMessage });
+
+			var initiatorService = initiatorQueue.CreateService("Initiator", contract);
+			var targetService = targetQueue.CreateService("Target", contract);
+
+			var request = Broker.BeginConversation(initiatorService, targetService, contract);
+
+			request.Send(requestMessage, Stream.Null);
+			var requestReceived = targetQueue.TryReceive((c, t, b) => {
+				Check.That(() => t.Name == "Request");
+				c.Send(replyMessage, Stream.Null);
+			}, TimeSpan.Zero);
+
+			var replyReceived = initiatorQueue.TryReceive((c, t, b) => {
+				Check.That(() => t.Name == "Reply");
+			}, TimeSpan.Zero);
+			Check.That(
+				() => requestReceived,
+				() => replyReceived);
+		}
+
+		public void contracts_must_have_at_least_one_message_type() {
+			var theQueue = Broker.CreateQueue("TheQueue");
+			Check.Exception<InvalidOperationException>(
+				() =>Broker.CreateContract("TheContract"));
+		}
+
+		public void delete_queue_removes_all_assoicated_services() {
+			var theQueue = Broker.CreateQueue("TheQueue");
+			var conttract = Broker.CreateContract("TheContract", ServiceBrokerMessageType.Default);
+
+			var s1 = theQueue.CreateService("Service1", conttract);
+			var s2 = theQueue.CreateService("Service2", conttract);
+
+			Broker.DeleteQueue(theQueue.Name);
+
+			Check.That(
+				() => Db.ExecuteScalar("select object_id('Service1')") is DBNull,
+				() => Db.ExecuteScalar("select object_id('Service2')") is DBNull);
 		}
 	}
 }
