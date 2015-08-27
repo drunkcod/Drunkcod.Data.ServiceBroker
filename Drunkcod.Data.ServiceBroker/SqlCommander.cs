@@ -1,28 +1,39 @@
 using System;
+using System.Collections.Generic;
+using System.Data;
 using System.Data.SqlClient;
 
 namespace Drunkcod.Data.ServiceBroker
 {
 	public class SqlCommander
 	{
-		static Action<SqlParameterCollection> NoSetup = _ => { };
+		static readonly Action<SqlParameterCollection> NoSetup = _ => { };
+
 		readonly string connectionString;
 
 		public SqlCommander(string connectionString) {
 			this.connectionString = connectionString;
 		}
 
-		public void ExecuteNonQuery(string query, Action<SqlParameterCollection> setup) {
+		public int ExecuteNonQuery(string query, Action<SqlParameterCollection> setup) {
+			return Execute(query, setup, x => x.ExecuteNonQuery());
+		}
+
+		public object ExecuteScalar(string query, Action<SqlParameterCollection> setup) {
+			return Execute(query, setup, x => x.ExecuteScalar());
+		}
+
+		T Execute<T>(string query, Action<SqlParameterCollection> setup, Func<SqlCommand, T> exec) {
 			var cmd = NewCommand(query);
 			try {
 				setup(cmd.Parameters);
 				cmd.Connection.Open();
-				cmd.ExecuteNonQuery();
+				return exec(cmd);
 			} finally {
 				cmd.Connection.Dispose();
 				cmd.Dispose();
 			}
-		}
+		}  
 
 		public void ExecuteNonQuery(string query) {
 			ExecuteNonQuery(query, NoSetup);
@@ -32,20 +43,22 @@ namespace Drunkcod.Data.ServiceBroker
 			return ExecuteScalar(query, NoSetup);
 		}
 
-		public object ExecuteScalar(string query, Action<SqlParameterCollection> setup) {
+		public IEnumerable<T> ExecuteReader<T>(string query, Action<SqlParameterCollection> setup, CommandBehavior commandBehavior, Func<IDataRecord,T> convert) {
 			var cmd = NewCommand(query);
-			try {
-				setup(cmd.Parameters);
-				cmd.Connection.Open();
-				return cmd.ExecuteScalar();
-			} finally {
-				cmd.Connection.Dispose();
-				cmd.Dispose();
+			setup(cmd.Parameters);
+			cmd.Connection.Open();
+			using(var reader = cmd.ExecuteReader(CommandBehavior.CloseConnection | commandBehavior)) {
+				while(reader.Read())
+					yield return convert(reader);
 			}
-		}
+		}  
 
 		public SqlCommand NewCommand(string query) {
 			return new SqlCommand(query, new SqlConnection(connectionString));
+		}
+
+		public bool ObjectExists(string name) {
+			return !(ExecuteScalar("select object_id(@name)", x => x.AddWithValue("@name", name)) is DBNull);
 		}
 	}
 }

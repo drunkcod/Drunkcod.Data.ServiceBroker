@@ -18,21 +18,15 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 
 		[BeforeAll]
 		public void create_empty_database() {
-			using(var db = new SqlConnection(ConnectionString))
-			using(var cmd = new SqlCommand($"create database [{DbName}]", db)) {
-				db.Open();
-				cmd.ExecuteNonQuery();
-			}
+			var db = new SqlCommander(ConnectionString);
+			db.ExecuteNonQuery($"create database [{DbName}]");
 		}
 
 		[AfterAll]
 		public void drop_test_database() {
 			SqlConnection.ClearAllPools();
-			using(var db = new SqlConnection(ConnectionString))
-			using(var cmd = new SqlCommand($"drop database [{DbName}]", db)) {
-				db.Open();
-				cmd.ExecuteNonQuery();
-			}
+			var db = new SqlCommander(ConnectionString);
+			db.ExecuteNonQuery($"drop database [{DbName}]");
 		}
 
 		[BeforeEach]
@@ -202,8 +196,8 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			Broker.DeleteQueue(theQueue.Name);
 
 			Check.That(
-				() => Db.ExecuteScalar("select object_id('Service1')") is DBNull,
-				() => Db.ExecuteScalar("select object_id('Service2')") is DBNull);
+				() => !Db.ObjectExists(s1.Name),
+				() => !Db.ObjectExists(s2.Name));
 		}
 	}
 }

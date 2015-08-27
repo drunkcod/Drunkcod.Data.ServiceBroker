@@ -91,7 +91,7 @@ select @cid"));
 		}
 
 		public ServiceBrokerConversation OpenConversation(Guid conversationHandle) {
-			return new ServiceBrokerConversation(db.ExecuteNonQuery, conversationHandle);
+			return new ServiceBrokerConversation((x, setup) => db.ExecuteNonQuery(x, setup), conversationHandle);
 		}
 
 		public ServiceBrokerConversation GetTargetConversation(ServiceBrokerConversation initiator) {
@@ -105,10 +105,11 @@ and initiator.conversation_handle != target.conversation_handle", x => x.AddWith
 		}
 
 		public ServiceBrokerService CreateSinkService() {
-			if((int)db.ExecuteScalar($"select count(*) from sys.services where name = '{SinkName}'") != 1) { 
-				if(db.ExecuteScalar($"select object_id('[{SinkName} Handler]')") is DBNull)
+			if((int)db.ExecuteScalar($"select count(*) from sys.services where name = '{SinkName}'") != 1) {
+				var handlerName = SinkName + " Handler";
+				if(!db.ObjectExists(handlerName))
 					db.ExecuteNonQuery(
-$@"create procedure [{SinkName} Handler]
+$@"create procedure [{handlerName}]
 as
 	declare @cid uniqueidentifier
 	declare @message_type sysname
@@ -133,8 +134,27 @@ as
 		}
 
 		public void Send(IEnumerable<ServiceBrokerConversation> conversations, ServiceBrokerMessageType messageType, byte[] body) {
-			foreach(var item in conversations)
-				item.Send(messageType, new MemoryStream(body, false));
+//			foreach(var item in conversations)
+//				item.Send(messageType, new MemoryStream(body, false));
+			var sep = " (";
+			var q = new StringBuilder("send on conversation");
+			var cmd = db.NewCommand(string.Empty);
+			foreach(var item in conversations) {
+				var p = cmd.Parameters.AddWithValue("@c" + cmd.Parameters.Count, item.Handle);
+				q.AppendFormat("{0}{1}", sep, p.ParameterName);
+				sep = ", ";
+			}
+			q.Append($") message type [{messageType.Name}](@body)");
+			cmd.Parameters.AddWithValue("@body", body);
+			cmd.CommandText = q.ToString();
+			try {
+				cmd.Connection.Open();
+				cmd.ExecuteNonQuery();
+			} finally {
+				cmd.Connection.Close();
+				cmd.Dispose();
+			}
+
 		} 
 
 		struct ConversationEndpoint

@@ -41,17 +41,14 @@ where conversation_handle = @conversation), timeout @timeout ";
 		}
 
 		public IEnumerable<ServiceBrokerService> GetServices() {
-			var cmd = db.NewCommand(
+			return db.ExecuteReader(
 @"select services.name 
 from sys.services services
 join sys.service_queues queues on services.service_queue_id = queues.object_id
-where queues.name = @queueName");
-			cmd.Parameters.AddWithValue("@queueName", Name);
-			cmd.Connection.Open();
-			using(var reader = cmd.ExecuteReader(CommandBehavior.CloseConnection | CommandBehavior.SequentialAccess)) {
-				while(reader.Read())
-					yield return new ServiceBrokerService(reader.GetString(0));
-			}
+where queues.name = @queueName",
+			x => x.AddWithValue("@queueName", Name),
+			CommandBehavior.SequentialAccess,
+			reader => new ServiceBrokerService(reader.GetString(0)));
 		} 
 
 		public bool TryReceive(ServiceBrokerMessageHandler handler, TimeSpan timeout) {
