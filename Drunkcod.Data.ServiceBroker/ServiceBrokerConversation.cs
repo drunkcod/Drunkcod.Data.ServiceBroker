@@ -9,24 +9,23 @@ namespace Drunkcod.Data.ServiceBroker
 	public class ServiceBrokerConversation
 	{
 		readonly NonQueryHandler db;
-		readonly Guid conversationHandle;
 
-		public Guid Handle => conversationHandle;
+		public Guid Handle { get; }
 
 		internal ServiceBrokerConversation(NonQueryHandler db, Guid conversationHandle) {
 			this.db = db;
-			this.conversationHandle = conversationHandle;
+			this.Handle = conversationHandle;
 		}
 
 		public void Send(ServiceBrokerMessageType messageType, Stream body) {
 			db($"send on conversation @cid message type [{messageType.Name}](@body)", x => {
-				x.AddWithValue("@cid", conversationHandle);
+				x.AddWithValue("@cid", Handle);
 				x.AddWithValue("@body", body);
 			});
 		}
 
 		public void EndConversation() {
-			db("end conversation @cid", x => x.AddWithValue("@cid", conversationHandle));
+			db("end conversation @cid", x => x.AddWithValue("@cid", Handle));
 		}
 	}
 }

@@ -46,13 +46,12 @@ namespace Drunkcod.Data.ServiceBroker
 		}
 
 		public IEnumerable<ServiceBrokerQueue> GetQueues() {
-			using(var cmd = db.NewCommand("select name from sys.service_queues where is_ms_shipped = 0 and name != @sink_queue")) {
-				cmd.Parameters.AddWithValue("@sink_queue", SinkName);
-				cmd.Connection.Open();
-				using(var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection))
-					while(reader.Read())
-						yield return new ServiceBrokerQueue(db, reader.GetString(0));
-			}
+			return db.ExecuteReader(
+				"select name from sys.service_queues where is_ms_shipped = 0 and name != @sink_queue",
+				x => x.AddWithValue("@sink_queue", SinkName),
+				CommandBehavior.SequentialAccess,
+				reader => new ServiceBrokerQueue(db, reader.GetString(0))
+			);
 		} 
 
 		public ServiceBrokerContract CreateContract(string name, params ServiceBrokerMessageType[] messageTypes) {
@@ -134,8 +133,6 @@ as
 		}
 
 		public void Send(IEnumerable<ServiceBrokerConversation> conversations, ServiceBrokerMessageType messageType, byte[] body) {
-//			foreach(var item in conversations)
-//				item.Send(messageType, new MemoryStream(body, false));
 			var sep = " (";
 			var q = new StringBuilder("send on conversation");
 			var cmd = db.NewCommand(string.Empty);
@@ -154,7 +151,6 @@ as
 				cmd.Connection.Close();
 				cmd.Dispose();
 			}
-
 		} 
 
 		struct ConversationEndpoint

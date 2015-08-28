@@ -12,9 +12,9 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 	{
 		readonly string DbName = $"{typeof(SqlServerServiceBroker).FullName}.Spec";
 		const string ConnectionString = "Server=.;Integrated Security=SSPI";
+		string BrokerConnectionString => ConnectionString + ";Database=" + DbName;
 		SqlCommander Db;
 		SqlServerServiceBroker Broker;
-		string BrokerConnectionString => ConnectionString + ";Database=" + DbName;
 
 		[BeforeAll]
 		public void create_empty_database() {
@@ -181,7 +181,6 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 		}
 
 		public void contracts_must_have_at_least_one_message_type() {
-			var theQueue = Broker.CreateQueue("TheQueue");
 			Check.Exception<InvalidOperationException>(
 				() =>Broker.CreateContract("TheContract"));
 		}

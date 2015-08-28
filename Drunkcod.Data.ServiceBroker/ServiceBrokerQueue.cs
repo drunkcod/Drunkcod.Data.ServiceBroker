@@ -108,17 +108,12 @@ where queues.name = @queueName",
 		}
 
 		public List<ServiceBrokerQueueMessage> Peek() {
-			using(var cmd = db.NewCommand($"select message_type_name from [{Name}] with(nolock)")) {
-				cmd.Connection.Open();
-				using(var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection)) {
-					var messages = new List<ServiceBrokerQueueMessage>();
-					while(reader.Read())
-						messages.Add(new ServiceBrokerQueueMessage(
-							new ServiceBrokerMessageType(reader.GetString(0))
-						));
-					return messages;
-				}
-			}
+			return db.ExecuteReader(
+				$"select message_type_name from [{Name}] with(nolock)",
+				_ => { },
+				CommandBehavior.SequentialAccess, 
+				reader => new ServiceBrokerQueueMessage(new ServiceBrokerMessageType(reader.GetString(0)))
+			).ToList();
 		}
 
 		public ServiceBrokerQueueStatistics GetStatistics() {
