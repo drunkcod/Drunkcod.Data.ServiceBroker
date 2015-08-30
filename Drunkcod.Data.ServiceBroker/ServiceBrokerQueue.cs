@@ -95,6 +95,7 @@ where queues.name = @queueName",
 			}
 			catch
 			{
+				reader?.Close();
 				cmd.Transaction?.Rollback();
 				throw;
 			}

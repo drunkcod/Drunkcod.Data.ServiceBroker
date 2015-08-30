@@ -182,7 +182,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 
 		public void contracts_must_have_at_least_one_message_type() {
 			Check.Exception<InvalidOperationException>(
-				() =>Broker.CreateContract("TheContract"));
+				() => Broker.CreateContract("TheContract"));
 		}
 
 		public void delete_queue_removes_all_assoicated_services() {

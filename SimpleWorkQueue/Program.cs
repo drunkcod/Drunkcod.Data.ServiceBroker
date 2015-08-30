@@ -30,13 +30,9 @@ namespace SimpleWorkQueue
 				});
 			}
 */
-			var q2 = broker.OpenChannel("MyQueue", typeof(int), typeof(string));
+			var q2 = broker.OpenChannel<string>();
+			q2.Send(Console.ReadLine());
 
-			q2.Send(42);
-			q2.Send("Hello World!");
-			while(q2.TryReceive((type, value) => {
-				Console.WriteLine("{0} {1}", type, value);
-			}));
 		}
 	}
 }

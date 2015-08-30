@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 namespace Drunkcod.Data.ServiceBroker
 {
@@ -12,17 +13,22 @@ namespace Drunkcod.Data.ServiceBroker
 
 		public bool Pump(TimeSpan timeout) {
 			return channel.TryReceive(x => {
-				if(OnMessage == null)
-					return;
-				var e = new MessageEventArgs<T>(x);
-				foreach(EventHandler<MessageEventArgs<T>> handler in OnMessage.GetInvocationList()) {
-					try {
-						handler(this, e);
-					} catch { }
-				}
+				OnMessage.InvokeSafe(this, new MessageEventArgs<T>(x), ex => OnError.InvokeSafe(this, new ErrorEventArgs(ex), _ => { }));
 			}, timeout);
 		}
 		 
 		public event EventHandler<MessageEventArgs<T>>  OnMessage;
+		public event EventHandler<ErrorEventArgs> OnError; 
+	}
+
+	static class EventHandlerExtensions
+	{
+		public static void InvokeSafe<T>(this EventHandler<T> self, object sender, T args, Action<Exception> onError) where T : EventArgs {
+			if(self == null)
+				return;
+			foreach(EventHandler<T> handler in self.GetInvocationList())
+				try { handler(sender, args); }
+				catch(Exception ex) { onError(ex); }
+		}  
 	}
 }

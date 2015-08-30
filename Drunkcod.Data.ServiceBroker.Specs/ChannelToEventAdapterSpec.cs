@@ -27,7 +27,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			events.OnMessage += (s, e) => {
 				messageReceived = true;
 				Check.That(
-					() => Object.ReferenceEquals(s, events),
+					() => ReferenceEquals(s, events),
 					() => e.Message == theMessage);
 			};
 			theChannel.Send(theMessage);
@@ -45,6 +45,20 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			theChannel.Send("");
 			events.Pump(TimeSpan.Zero);
 			Check.That(() => eventsRaised == 2);
+		}
+
+		public void raises_on_error_event_when_handler_throws() {
+			var error = new InvalidOperationException();
+			events.OnMessage += (s, e) => { throw error; };
+			var onErrorRaised = false;
+			events.OnError += (s, e) => {
+				onErrorRaised = true;
+				Check.That(() => ReferenceEquals(e.GetException(), error));
+			};
+
+			theChannel.Send("");
+			events.Pump(TimeSpan.Zero);
+			Check.That(() => onErrorRaised);
 		}
 	}
 }
