@@ -4,6 +4,7 @@ using System.Data;
 using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
+using Newtonsoft.Json;
 
 namespace Drunkcod.Data.ServiceBroker
 {
@@ -106,6 +107,31 @@ where queues.name = @queueName",
 				cmd.Connection.Dispose();
 				cmd.Dispose();
 			}
+		}
+
+		class ServiceBrokerConversationChannel : ChannelBase, IChannel
+		{
+			readonly ServiceBrokerConversation conversation;
+			readonly ServiceBrokerQueue queue;
+
+			public ServiceBrokerConversationChannel(ServiceBrokerConversation conversation, ServiceBrokerQueue queue) {
+				this.conversation = conversation;
+				this.queue = queue;
+			}
+
+			public void Send(object item) {
+				conversation.Send(new ServiceBrokerMessageType(item.GetType().FullName), Serialize(item));
+			}
+
+			public bool TryReceive(Action<string, object> handleItem, TimeSpan timeout) {
+				return queue.TryReceive((c, type, body) => {
+					handleItem(type.Name, Deserialize(body, Type.GetType(type.Name)));
+				}, timeout);
+			}
+		}
+
+		public IChannel OpenAsChannel(ServiceBrokerConversation conversation) {
+			return new ServiceBrokerConversationChannel(conversation, this);
 		}
 
 		public List<ServiceBrokerQueueMessage> Peek() {

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Drunkcod.Data.ServiceBroker;
 using Newtonsoft.Json;
+using SimpleAgents;
 
 namespace SimpleWorkQueue
 {
@@ -30,8 +31,9 @@ namespace SimpleWorkQueue
 				});
 			}
 */
-			var q2 = broker.OpenChannel<string>();
-			q2.Send(Console.ReadLine());
+			var q2 = broker.OpenChannel<Message>();
+			for(;;) 
+				q2.Send(Message.NewMessage(Console.ReadLine()));
 
 		}
 	}

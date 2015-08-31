@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics.Contracts;
-using System.IO;
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
@@ -15,7 +14,6 @@ namespace Drunkcod.Data.ServiceBroker
 		const string ServiceBrokerEndDialog = "http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog";
 		public const string SinkName = "Drunkcod.Data.ServiceBroker.Sink";
 		readonly SqlCommander db;
-		readonly JsonSerializer serializer = new JsonSerializer();
 
 		public SqlServerServiceBroker(SqlCommander db) {
 			this.db = db;
@@ -63,11 +61,13 @@ namespace Drunkcod.Data.ServiceBroker
 			IEnumerable<ServiceBrokerMessageType> sentByTarget) {
 			var query = new StringBuilder($"if not exists(select null from sys.service_contracts where name = '{name}') create contract [{name}](");
 			var sep = string.Empty;
+			var target = new HashSet<ServiceBrokerMessageType>(sentByTarget);
+
 			foreach(var item in sentByInitiator) {
-				query.AppendFormat("{0}[{1}] sent by initiator", sep, item.Name);
+				query.AppendFormat("{0}[{1}] sent by {2}", sep, item.Name, target.Remove(item) ? "any" : "initiator");
 				sep = ", ";
 			}
-			foreach(var item in sentByTarget) {
+			foreach(var item in target) {
 				query.AppendFormat("{0}[{1}] sent by target", sep, item.Name);
 				sep = ", ";
 			}
@@ -174,17 +174,14 @@ as
 			}
 		}
 
-		class ServiceBrokerChannel
+		class ServiceBrokerChannel : ChannelBase
 		{
-			static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
-			readonly JsonSerializer serializer;
 			readonly ConversationEndpoint endpoint;
 			readonly ServiceBrokerQueue queue;
 
-			public ServiceBrokerChannel(ConversationEndpoint endpoint, ServiceBrokerQueue queue, JsonSerializer serializer) {
+			public ServiceBrokerChannel(ConversationEndpoint endpoint, ServiceBrokerQueue queue) {
 				this.queue = queue;
 				this.endpoint = endpoint;
-				this.serializer = serializer;
 			}
 
 			public void Send(ServiceBrokerMessageType messageType, object item) {
@@ -194,23 +191,24 @@ as
 
 			public bool TryReceive(Action<string, object> handleMessage, TimeSpan timeout) {
 				return queue.TryReceive((c, type, body) => {
-					handleMessage(type.Name, Deserialize(body, Type.GetType(type.Name)));
+					handleMessage(type.Name, Deserialize(body, GetType(type)));
 					c.EndConversation();
 				}, timeout);
 			}
 
-			Stream Serialize(object item) {
-				var body = new MemoryStream();
-				using(var writer = new StreamWriter(body, Utf8NoBom, 512, true))
-					serializer.Serialize(writer, item);
-				body.Position = 0;
-				return body;
+			public bool TryReceive<T>(Action<T> handleMessage, TimeSpan timeout) {
+				return queue.TryReceive((c, type, body) => {
+					handleMessage((T)Deserialize(body, typeof(T)));
+					c.EndConversation();
+				}, timeout);
 			}
 
-			object Deserialize(Stream body, Type type) {
-				using(var reader = new StreamReader(body, Utf8NoBom))
-				using(var json = new JsonTextReader(reader))
-					return serializer.Deserialize(json, type);
+			static Type GetType(ServiceBrokerMessageType type)
+			{
+				var clrType = Type.GetType(type.Name);
+				if(clrType == null)
+					throw new InvalidOperationException("Unable to locate type: " + type.Name);
+				return clrType;
 			}
 		}
 
@@ -227,9 +225,7 @@ as
 			public void Send(T item) { channel.Send(workItemMessageType, item); }
 
 			public bool TryReceive(Action<T> handleItem, TimeSpan timeout) {
-				return channel.TryReceive((_, body) => {
-					handleItem((T)body);
-				}, timeout);
+				return channel.TryReceive(handleItem, timeout);
 			}
 		}
 
@@ -273,7 +269,7 @@ as
 			var workerContract = CreateContract(name, messageTypes);
 			var workQueue = CreateQueue(name);
 			var endpoint = CreateEndpoint(name, workQueue, workerContract);
-			var channel = new ServiceBrokerChannel(endpoint, workQueue, serializer);
+			var channel = new ServiceBrokerChannel(endpoint, workQueue);
 			return channel;
 		}
 

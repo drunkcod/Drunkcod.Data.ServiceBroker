@@ -59,6 +59,10 @@
       <Project>{b2d2e897-df9b-4bb7-84a5-f70240e4f5b3}</Project>
       <Name>Drunkcod.Data.ServiceBroker</Name>
     </ProjectReference>
+    <ProjectReference Include="..\SimpleAgents\SimpleAgents.fsproj">
+      <Project>{eb8692e7-1ab8-4da7-a9f7-e28f38ff5260}</Project>
+      <Name>SimpleAgents</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

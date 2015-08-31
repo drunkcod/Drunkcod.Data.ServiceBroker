@@ -1,7 +1,6 @@
 ﻿open System
 open Drunkcod.Data.ServiceBroker
-
-type Message = Message of string
+open SimpleAgents
 
 [<EntryPoint>]
 let main argv = 
@@ -9,7 +8,7 @@ let main argv =
         let rec loop() = async {
             let! msg = inbox.Receive() 
             match msg with 
-            | Message(x) -> printf "%s" x
+            | Message(x) -> printf "%s\n" x
             
             return! loop()
         }
@@ -20,7 +19,7 @@ let main argv =
 
     let timeout = TimeSpan.FromMilliseconds(100.)
     let rec loop() = 
-        channel.TryReceive((fun x -> worker.Post(Message(x))), timeout) 
+        channel.TryReceive((fun x -> worker.Post(x)), timeout) 
         |> ignore
         loop()
     loop()

@@ -3,7 +3,7 @@ using System.IO;
 
 namespace Drunkcod.Data.ServiceBroker
 {
-	public class ChannelToEventSourceAdapter<T>
+	public class ChannelToEventSourceAdapter<T> : IObservable<T>
 	{
 		readonly IChannel<T> channel;
 		
@@ -18,7 +18,24 @@ namespace Drunkcod.Data.ServiceBroker
 		}
 		 
 		public event EventHandler<MessageEventArgs<T>>  OnMessage;
-		public event EventHandler<ErrorEventArgs> OnError; 
+		public event EventHandler<ErrorEventArgs> OnError;
+
+		class DisposeAction : IDisposable
+		{
+			readonly Action onDispose;
+
+			public DisposeAction(Action onDispose) {
+				this.onDispose = onDispose;
+			}
+
+			void IDisposable.Dispose() { onDispose(); }
+		}
+
+		public IDisposable Subscribe(IObserver<T> observer) {
+			EventHandler<MessageEventArgs<T>> onNext = (_, e) => observer.OnNext(e.Message);
+			OnMessage += onNext;
+			return new DisposeAction(() => OnMessage -= onNext);
+		}
 	}
 
 	static class EventHandlerExtensions

@@ -11,7 +11,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 	public class SqlServerServiceBrokerSpec
 	{
 		readonly string DbName = $"{typeof(SqlServerServiceBroker).FullName}.Spec";
-		const string ConnectionString = "Server=.;Integrated Security=SSPI";
+		static readonly string ConnectionString = Environment.GetEnvironmentVariable("TestDbConnectionString") ?? "Server=.;Integrated Security=SSPI";
 		string BrokerConnectionString => ConnectionString + ";Database=" + DbName;
 		SqlCommander Db;
 		SqlServerServiceBroker Broker;
@@ -152,6 +152,40 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			);
 		}
 
+		public void can_create_conversation_channel() {
+			var myQ = Broker.CreateQueue("MyQueue");
+			var myMessage = Broker.CreateMessageType("MyMessage");
+			var myContract = Broker.CreateContract("MyContract", myMessage);
+			var myService = myQ.CreateService("MyQueue", myContract);
+
+			var c1 = Broker.BeginConversation(myService, myService, myContract);
+
+			var channel = myQ.OpenAsChannel(c1);
+			Check.That(() => channel is IChannel);
+		}
+
+		public void send_and_receive_on_conversation_channel() {
+			var myQ = Broker.CreateQueue("MyQueue");
+			var myMessage = Broker.CreateMessageType("System.String");
+			var myContract = Broker.CreateContract("MyContract2", new [] { myMessage }, new[] { myMessage });
+			var myService = myQ.CreateService("MyQueue", myContract);
+
+			var c1 = Broker.BeginConversation(myService, myService, myContract);
+
+			var channel = myQ.OpenAsChannel(c1);
+			channel.Send("Hello World");
+
+			ServiceBrokerMessageHandler getHelloSendGoodbye = (c, t, b) => {
+				Check.That(() => new StreamReader(b).ReadToEnd() == "\"Hello World\"");
+				myQ.OpenAsChannel(c).Send("Goodbye World!");
+			};
+			 
+			Check.That(() => myQ.TryReceive(getHelloSendGoodbye, TimeSpan.Zero));
+
+			Action<string,object> checkGoodbye = (t, b) => Check.That(() => b == "Goodbye World!"); 
+			Check.That(() => channel.TryReceive(checkGoodbye, TimeSpan.Zero));
+		}
+
 		public void request_reply() {
 			var initiatorQueue = Broker.CreateQueue("Initiator");
 			var targetQueue = Broker.CreateQueue("Target");
@@ -178,6 +212,15 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			Check.That(
 				() => requestReceived,
 				() => replyReceived);
+		}
+
+		public void shared_request_reply_type() {
+			var initiatorQueue = Broker.CreateQueue("Initiator");
+			var targetQueue = Broker.CreateQueue("Target");
+			var requestReplyMessage = Broker.CreateMessageType("RequestReply");
+			var contract = Broker.CreateContract("RequestReplySame", 
+				sentByInitiator: new [] { requestReplyMessage }, 
+				sentByTarget:  new[] { requestReplyMessage });
 		}
 
 		public void contracts_must_have_at_least_one_message_type() {
