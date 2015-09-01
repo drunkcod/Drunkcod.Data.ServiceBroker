@@ -5,7 +5,6 @@ using System.Data.SqlClient;
 using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Text;
-using Newtonsoft.Json;
 
 namespace Drunkcod.Data.ServiceBroker
 {
@@ -13,7 +12,8 @@ namespace Drunkcod.Data.ServiceBroker
 	{
 		const string ServiceBrokerEndDialog = "http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog";
 		public const string SinkName = "Drunkcod.Data.ServiceBroker.Sink";
-		readonly SqlCommander db;
+		internal readonly SqlCommander db;
+		readonly IMessageSerializer serializer = new JsonMessageSerializer();
 
 		public SqlServerServiceBroker(SqlCommander db) {
 			this.db = db;
@@ -34,6 +34,11 @@ namespace Drunkcod.Data.ServiceBroker
 
 		public ServiceBrokerQueue CreateQueue(string name) {
 			db.ExecuteNonQuery($"if object_id('[{name}]') is null create queue [{name}]");
+			return OpenQueue(name);
+		}
+
+		private ServiceBrokerQueue OpenQueue(string name)
+		{
 			return new ServiceBrokerQueue(db, name);
 		}
 
@@ -76,6 +81,25 @@ namespace Drunkcod.Data.ServiceBroker
 			db.ExecuteNonQuery(query.Append(")").ToString());
 			return new ServiceBrokerContract(name);
 		}
+
+		public IEnumerable<ServiceBrokerContract> GetContracts() {
+			return db.ExecuteReader(
+@"select name from sys.service_contracts where name not in(
+	'DEFAULT', 
+	'http://schemas.microsoft.com/SQL/Notifications/PostQueryNotification',
+	'http://schemas.microsoft.com/SQL/Notifications/PostEventNotification',
+	'http://schemas.microsoft.com/SQL/ServiceBroker/BrokerConfigurationNotice',
+	'http://schemas.microsoft.com/SQL/ServiceBroker/ServiceEcho',
+	'http://schemas.microsoft.com/SQL/ServiceBroker/ServiceDiagnostic'
+)",
+				x => { },
+				CommandBehavior.SequentialAccess,
+				reader => new ServiceBrokerContract(reader.GetString(0)));
+		} 
+
+		public void DeleteContract(string name) {
+			db.ExecuteNonQuery($"drop contract [{name}]");
+        }
 
 		public ServiceBrokerConversation BeginConversation(ServiceBrokerService from, ServiceBrokerService to, ServiceBrokerContract contract) {
 			return OpenConversation((Guid)db.ExecuteScalar(
@@ -174,41 +198,35 @@ as
 			}
 		}
 
-		class ServiceBrokerChannel : ChannelBase
+		class ServiceBrokerChannel
 		{
 			readonly ConversationEndpoint endpoint;
 			readonly ServiceBrokerQueue queue;
+			readonly IMessageSerializer serializer;
 
-			public ServiceBrokerChannel(ConversationEndpoint endpoint, ServiceBrokerQueue queue) {
+			public ServiceBrokerChannel(ConversationEndpoint endpoint, ServiceBrokerQueue queue, IMessageSerializer serializer) {
 				this.queue = queue;
 				this.endpoint = endpoint;
+				this.serializer = serializer;
 			}
 
 			public void Send(ServiceBrokerMessageType messageType, object item) {
 				var conversation = endpoint.BeginConversation();
-				conversation.Send(messageType, Serialize(item));
+				conversation.Send(messageType, serializer.Serialize(item));
 			}
 
 			public bool TryReceive(Action<string, object> handleMessage, TimeSpan timeout) {
 				return queue.TryReceive((c, type, body) => {
-					handleMessage(type.Name, Deserialize(body, GetType(type)));
+					handleMessage(type.Name, serializer.Deserialize(body, type));
 					c.EndConversation();
 				}, timeout);
 			}
 
 			public bool TryReceive<T>(Action<T> handleMessage, TimeSpan timeout) {
 				return queue.TryReceive((c, type, body) => {
-					handleMessage((T)Deserialize(body, typeof(T)));
+					handleMessage(serializer.Deserialize<T>(body));
 					c.EndConversation();
 				}, timeout);
-			}
-
-			static Type GetType(ServiceBrokerMessageType type)
-			{
-				var clrType = Type.GetType(type.Name);
-				if(clrType == null)
-					throw new InvalidOperationException("Unable to locate type: " + type.Name);
-				return clrType;
 			}
 		}
 
@@ -269,8 +287,41 @@ as
 			var workerContract = CreateContract(name, messageTypes);
 			var workQueue = CreateQueue(name);
 			var endpoint = CreateEndpoint(name, workQueue, workerContract);
-			var channel = new ServiceBrokerChannel(endpoint, workQueue);
+			var channel = new ServiceBrokerChannel(endpoint, workQueue, serializer);
 			return channel;
+		}
+
+		class ServiceBrokerConversationChannel : IChannel
+		{
+			readonly ServiceBrokerConversation conversation;
+			readonly ServiceBrokerQueue queue;
+			readonly  IMessageSerializer serializer;
+
+			public ServiceBrokerConversationChannel(ServiceBrokerConversation conversation, ServiceBrokerQueue queue, IMessageSerializer serializer) {
+				this.conversation = conversation;
+				this.queue = queue;
+				this.serializer = serializer;
+			}
+
+			public void Send(object item) {
+				conversation.Send(new ServiceBrokerMessageType(item.GetType().FullName), serializer.Serialize(item));
+			}
+
+			public bool TryReceive(Action<string, object> handleItem, TimeSpan timeout) {
+				return queue.TryReceive((c, type, body) => {
+					handleItem(type.Name, serializer.Deserialize(body, type));
+				}, timeout);
+			}
+		}
+
+		public IChannel OpenConversationChannel(ServiceBrokerConversation conversation) {
+			var queue = OpenQueue((string)db.ExecuteScalar(
+@"select queues.name
+from sys.conversation_endpoints endpoints
+join sys.service_queue_usages queue_usages on endpoints.service_id = queue_usages.service_id
+join sys.service_queues queues on queues.object_id = queue_usages.service_queue_id
+where conversation_handle = @cid", x => x.AddWithValue("@cid", conversation.Handle)));
+			return new ServiceBrokerConversationChannel(conversation, queue, serializer);
 		}
 
 		private ConversationEndpoint CreateEndpoint(string name, ServiceBrokerQueue queue, ServiceBrokerContract contract) {

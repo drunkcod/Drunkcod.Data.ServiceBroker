@@ -50,7 +50,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ChannelBase.cs" />
+    <Compile Include="JsonMessageSerializer.cs" />
     <Compile Include="ChannelToEventSourceAdapter.cs" />
     <Compile Include="IChannel.cs" />
     <Compile Include="MessageEventArgs.cs" />

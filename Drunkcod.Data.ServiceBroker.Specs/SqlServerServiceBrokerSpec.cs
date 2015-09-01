@@ -40,6 +40,8 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 		public void drop_user_queues() {
 			foreach(var item in Broker.GetQueues())
 				Broker.DeleteQueue(item.Name);
+			foreach(var item in Broker.GetContracts())
+				Broker.DeleteContract(item.Name);
 		}
 
 		public void typed_channel_roundtrip() {
@@ -160,7 +162,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 
 			var c1 = Broker.BeginConversation(myService, myService, myContract);
 
-			var channel = myQ.OpenAsChannel(c1);
+			var channel = Broker.OpenConversationChannel(c1);
 			Check.That(() => channel is IChannel);
 		}
 
@@ -172,17 +174,18 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 
 			var c1 = Broker.BeginConversation(myService, myService, myContract);
 
-			var channel = myQ.OpenAsChannel(c1);
+			var channel = Broker.OpenConversationChannel(c1);
 			channel.Send("Hello World");
 
+			var json = new JsonMessageSerializer();
 			ServiceBrokerMessageHandler getHelloSendGoodbye = (c, t, b) => {
-				Check.That(() => new StreamReader(b).ReadToEnd() == "\"Hello World\"");
-				myQ.OpenAsChannel(c).Send("Goodbye World!");
+				Check.That(() => json.Deserialize(b, t) == "Hello World");
+				Broker.OpenConversationChannel(c).Send("Goodbye World!");
 			};
 			 
 			Check.That(() => myQ.TryReceive(getHelloSendGoodbye, TimeSpan.Zero));
 
-			Action<string,object> checkGoodbye = (t, b) => Check.That(() => b == "Goodbye World!"); 
+			Action<string,object> checkGoodbye = (t, b) => Check.That(() => (string)b == "Goodbye World!"); 
 			Check.That(() => channel.TryReceive(checkGoodbye, TimeSpan.Zero));
 		}
 
@@ -220,7 +223,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			var requestReplyMessage = Broker.CreateMessageType("RequestReply");
 			var contract = Broker.CreateContract("RequestReplySame", 
 				sentByInitiator: new [] { requestReplyMessage }, 
-				sentByTarget:  new[] { requestReplyMessage });
+				sentByTarget: new[] { requestReplyMessage });
 		}
 
 		public void contracts_must_have_at_least_one_message_type() {
