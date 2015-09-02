@@ -12,7 +12,8 @@ namespace Drunkcod.Data.ServiceBroker
 	{
 		const string ServiceBrokerEndDialog = "http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog";
 		public const string SinkName = "Drunkcod.Data.ServiceBroker.Sink";
-		internal readonly SqlCommander db;
+
+		readonly SqlCommander db;
 		readonly IMessageSerializer serializer = new JsonMessageSerializer();
 
 		public SqlServerServiceBroker(SqlCommander db) {

@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Drunkcod.Data.ServiceBroker
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SimpleAgents", "SimpleAgents\SimpleAgents.fsproj", "{EB8692E7-1AB8-4DA7-A9F7-E28F38FF5260}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "QueueMonitor", "QueueMonitor\QueueMonitor.fsproj", "{50EB9CF7-143E-4EC9-B0BB-EA5383A44FB5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{EB8692E7-1AB8-4DA7-A9F7-E28F38FF5260}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EB8692E7-1AB8-4DA7-A9F7-E28F38FF5260}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EB8692E7-1AB8-4DA7-A9F7-E28F38FF5260}.Release|Any CPU.Build.0 = Release|Any CPU
+		{50EB9CF7-143E-4EC9-B0BB-EA5383A44FB5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{50EB9CF7-143E-4EC9-B0BB-EA5383A44FB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{50EB9CF7-143E-4EC9-B0BB-EA5383A44FB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{50EB9CF7-143E-4EC9-B0BB-EA5383A44FB5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
