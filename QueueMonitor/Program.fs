@@ -50,7 +50,7 @@ let main argv =
             let! msg = inbox.Receive() 
             msg |> ignore
             broker.GetQueues()
-            |> Seq.iter (fun q -> displayAgent.Post(Update({ Name = q.Name; Count = q.Peek().Count })))
+            |> Seq.iter (fun q -> displayAgent.Post(Update({ Name = q.Name; Count = q.Peek() |> Seq.length })))
             return! loop()
         }
         loop()

@@ -79,9 +79,9 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 			channel.Send(1);
 			channel.Send(2);
 
-			Action<int> checkOneLeft = _ => Check.That(() => queue.Peek().Count == 1);
+			Action<int> checkOneLeft = _ => Check.That(() => queue.Peek().Count() == 1);
 			Check.That(
-				() => queue.Peek().Count == 2,
+				() => queue.Peek().Count() == 2,
 				() => channel.TryReceive(checkOneLeft));
 		}
 
@@ -179,7 +179,7 @@ namespace Drunkcod.Data.ServiceBroker.Specs
 
 			var json = new JsonMessageSerializer();
 			ServiceBrokerMessageHandler getHelloSendGoodbye = (c, t, b) => {
-				Check.That(() => json.Deserialize(b, t) == "Hello World");
+				Check.That(() => json.Deserialize(b, t).ToString() == "Hello World");
 				Broker.OpenConversationChannel(c).Send("Goodbye World!");
 			};
 			 

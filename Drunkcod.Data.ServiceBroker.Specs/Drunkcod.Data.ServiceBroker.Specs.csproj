@@ -30,8 +30,8 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Cone, Version=2015.5.19.1, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Cone.2015.5.19.1\lib\Net35\Cone.dll</HintPath>
+    <Reference Include="Cone, Version=2016.8.17.1, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Cone.2016.8.17.1\lib\Net35\Cone.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
@@ -50,13 +50,13 @@
     <Compile Include="SqlServerServiceBrokerSpec.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\Drunkcod.Data.ServiceBroker\Drunkcod.Data.ServiceBroker.csproj">
       <Project>{b2d2e897-df9b-4bb7-84a5-f70240e4f5b3}</Project>
       <Name>Drunkcod.Data.ServiceBroker</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

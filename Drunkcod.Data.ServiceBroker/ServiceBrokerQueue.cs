@@ -64,18 +64,15 @@ where queues.name = @queueName",
 			return TryReceiveCore(handler, cmd);
 		}
 
-		private static bool TryReceiveCore(ServiceBrokerMessageHandler handler, SqlCommand cmd)
-		{
+		private static bool TryReceiveCore(ServiceBrokerMessageHandler handler, SqlCommand cmd) {
 			SqlDataReader reader = null;
 			var result = false;
 			var conversationQueries = new List<Tuple<string, Action<SqlParameterCollection>>>();
-			try
-			{
+			try {
 				cmd.Connection.Open();
 				cmd.Transaction = cmd.Connection.BeginTransaction();
 				reader = cmd.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
-				if (reader.Read())
-				{
+				if (reader.Read()) {
 					var conversation =
 						new ServiceBrokerConversation((query, setup) => conversationQueries.Add(Tuple.Create(query, setup)),
 							reader.GetGuid(0));
@@ -83,8 +80,7 @@ where queues.name = @queueName",
 					result = true;
 				}
 				reader.Close();
-				foreach (var item in conversationQueries)
-				{
+				foreach (var item in conversationQueries) {
 					cmd.Parameters.Clear();
 					cmd.CommandText = item.Item1;
 					item.Item2(cmd.Parameters);
@@ -92,15 +88,11 @@ where queues.name = @queueName",
 				}
 				cmd.Transaction?.Commit();
 				return result;
-			}
-			catch
-			{
+			} catch {
 				reader?.Close();
 				cmd.Transaction?.Rollback();
 				throw;
-			}
-			finally
-			{
+			} finally {
 				reader?.Dispose();
 				cmd.Transaction?.Dispose();
 				cmd.Connection.Dispose();
@@ -108,14 +100,12 @@ where queues.name = @queueName",
 			}
 		}
 
-		public List<ServiceBrokerQueueMessage> Peek() {
-			return db.ExecuteReader(
-				$"select message_type_name from [{Name}] with(nolock)",
-				_ => { },
-				CommandBehavior.SequentialAccess, 
-				reader => new ServiceBrokerQueueMessage(new ServiceBrokerMessageType(reader.GetString(0)))
-			).ToList();
-		}
+		public IEnumerable<ServiceBrokerQueueMessage> Peek() =>
+			db.ExecuteReader(
+				$"select message_type_name, message_body from [{Name}] with(nolock)",
+				CommandBehavior.SequentialAccess,
+				reader => new ServiceBrokerQueueMessage(new ServiceBrokerMessageType(reader.GetString(0)), (byte[])reader.GetValue(1))
+			);
 
 		public ServiceBrokerQueueStatistics GetStatistics() {
 			var stats = new ServiceBrokerQueueStatistics();

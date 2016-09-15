@@ -24,9 +24,8 @@ namespace Drunkcod.Data.ServiceBroker
 			this.db = new SqlCommander(connectionString);
 		}
 
-		public void EnableBroker() {
+		public void EnableBroker() =>
 			db.ExecuteNonQuery("if not exists(select null from sys.databases where database_id = db_id() and is_broker_enabled = 1) begin declare @sql nvarchar(max) = N'alter database [' + db_name() + '] set enable_broker with rollback immediate'; exec sp_executesql @sql end");
-		}
 
 		public ServiceBrokerMessageType CreateMessageType(string name) {
 			db.ExecuteNonQuery($"if not exists(select null from sys.service_message_types where name = '{name}') create message type [{name}] validation = none");
@@ -38,10 +37,8 @@ namespace Drunkcod.Data.ServiceBroker
 			return OpenQueue(name);
 		}
 
-		private ServiceBrokerQueue OpenQueue(string name)
-		{
-			return new ServiceBrokerQueue(db, name);
-		}
+		public ServiceBrokerQueue OpenQueue(string name) =>
+			new ServiceBrokerQueue(db, name);
 
 		public void DeleteQueue(string name) {
 			foreach(var service in new ServiceBrokerQueue(db, name).GetServices())
@@ -49,18 +46,16 @@ namespace Drunkcod.Data.ServiceBroker
 			db.ExecuteNonQuery($"drop queue [{name}]");
 		}
 
-		public IEnumerable<ServiceBrokerQueue> GetQueues() {
-			return db.ExecuteReader(
+		public IEnumerable<ServiceBrokerQueue> GetQueues() =>
+			db.ExecuteReader(
 				"select name from sys.service_queues where is_ms_shipped = 0 and name != @sink_queue",
 				x => x.AddWithValue("@sink_queue", SinkName),
 				CommandBehavior.SequentialAccess,
 				reader => new ServiceBrokerQueue(db, reader.GetString(0))
 			);
-		} 
 
-		public ServiceBrokerContract CreateContract(string name, params ServiceBrokerMessageType[] messageTypes) {
-			return CreateContract(name, messageTypes, new ServiceBrokerMessageType[0]);
-		}
+		public ServiceBrokerContract CreateContract(string name, params ServiceBrokerMessageType[] messageTypes) =>
+			CreateContract(name, messageTypes, new ServiceBrokerMessageType[0]);
 
 		public ServiceBrokerContract CreateContract(string name, 
 			IEnumerable<ServiceBrokerMessageType> sentByInitiator,
@@ -83,8 +78,8 @@ namespace Drunkcod.Data.ServiceBroker
 			return new ServiceBrokerContract(name);
 		}
 
-		public IEnumerable<ServiceBrokerContract> GetContracts() {
-			return db.ExecuteReader(
+		public IEnumerable<ServiceBrokerContract> GetContracts() =>
+			db.ExecuteReader(
 @"select name from sys.service_contracts where name not in(
 	'DEFAULT', 
 	'http://schemas.microsoft.com/SQL/Notifications/PostQueryNotification',
@@ -93,17 +88,14 @@ namespace Drunkcod.Data.ServiceBroker
 	'http://schemas.microsoft.com/SQL/ServiceBroker/ServiceEcho',
 	'http://schemas.microsoft.com/SQL/ServiceBroker/ServiceDiagnostic'
 )",
-				x => { },
 				CommandBehavior.SequentialAccess,
 				reader => new ServiceBrokerContract(reader.GetString(0)));
-		} 
 
-		public void DeleteContract(string name) {
+		public void DeleteContract(string name) => 
 			db.ExecuteNonQuery($"drop contract [{name}]");
-        }
 
-		public ServiceBrokerConversation BeginConversation(ServiceBrokerService from, ServiceBrokerService to, ServiceBrokerContract contract) {
-			return OpenConversation((Guid)db.ExecuteScalar(
+		public ServiceBrokerConversation BeginConversation(ServiceBrokerService from, ServiceBrokerService to, ServiceBrokerContract contract) =>
+			OpenConversation((Guid)db.ExecuteScalar(
 $@"declare @cid uniqueidentifier
 begin dialog @cid
 from service [{from.Name}]
@@ -112,21 +104,18 @@ on contract [{contract.Name}]
 with encryption = off
 
 select @cid"));
-		}
 
-		public ServiceBrokerConversation OpenConversation(Guid conversationHandle) {
-			return new ServiceBrokerConversation((x, setup) => db.ExecuteNonQuery(x, setup), conversationHandle);
-		}
+		public ServiceBrokerConversation OpenConversation(Guid conversationHandle) =>
+			new ServiceBrokerConversation((x, setup) => db.ExecuteNonQuery(x, setup), conversationHandle);
 
-		public ServiceBrokerConversation GetTargetConversation(ServiceBrokerConversation initiator) {
-			return OpenConversation((Guid)db.ExecuteScalar(
+		public ServiceBrokerConversation GetTargetConversation(ServiceBrokerConversation initiator) =>
+			OpenConversation((Guid)db.ExecuteScalar(
 $@"select 
 	target_handle = target.conversation_handle
 from sys.conversation_endpoints initiator
 join sys.conversation_endpoints target on initiator.conversation_id = target.conversation_id
 where initiator.conversation_handle = @cid
 and initiator.conversation_handle != target.conversation_handle", x => x.AddWithValue("@cid", initiator.Handle)));
-		}
 
 		public ServiceBrokerService CreateSinkService() {
 			if((int)db.ExecuteScalar($"select count(*) from sys.services where name = '{SinkName}'") != 1) {
@@ -216,19 +205,17 @@ as
 				conversation.Send(messageType, serializer.Serialize(item));
 			}
 
-			public bool TryReceive(Action<string, object> handleMessage, TimeSpan timeout) {
-				return queue.TryReceive((c, type, body) => {
+			public bool TryReceive(Action<string, object> handleMessage, TimeSpan timeout) => 
+				queue.TryReceive((c, type, body) => {
 					handleMessage(type.Name, serializer.Deserialize(body, type));
 					c.EndConversation();
 				}, timeout);
-			}
 
-			public bool TryReceive<T>(Action<T> handleMessage, TimeSpan timeout) {
-				return queue.TryReceive((c, type, body) => {
+			public bool TryReceive<T>(Action<T> handleMessage, TimeSpan timeout) =>
+				queue.TryReceive((c, type, body) => {
 					handleMessage(serializer.Deserialize<T>(body));
 					c.EndConversation();
 				}, timeout);
-			}
 		}
 
 		class ServiceBrokerTypedChannel<T> : IChannel<T>
@@ -241,11 +228,10 @@ as
 				this.workItemMessageType = workItemMessageType;
 			}
 
-			public void Send(T item) { channel.Send(workItemMessageType, item); }
+			public void Send(T item) => channel.Send(workItemMessageType, item);
 
-			public bool TryReceive(Action<T> handleItem, TimeSpan timeout) {
-				return channel.TryReceive(handleItem, timeout);
-			}
+			public bool TryReceive(Action<T> handleItem, TimeSpan timeout) =>
+				channel.TryReceive(handleItem, timeout);
 		}
 
 		class ServiceBrokerUntypedChannel : IChannel
@@ -268,9 +254,8 @@ as
 				}
 			}
 
-			public bool TryReceive(Action<string,object> handleItem, TimeSpan timeout) {
-				return channel.TryReceive(handleItem, timeout);
-			}
+			public bool TryReceive(Action<string,object> handleItem, TimeSpan timeout) =>
+				channel.TryReceive(handleItem, timeout);
 		}
 
 		public IChannel<T> OpenChannel<T>() {
@@ -304,15 +289,13 @@ as
 				this.serializer = serializer;
 			}
 
-			public void Send(object item) {
+			public void Send(object item) =>
 				conversation.Send(new ServiceBrokerMessageType(item.GetType().FullName), serializer.Serialize(item));
-			}
 
-			public bool TryReceive(Action<string, object> handleItem, TimeSpan timeout) {
-				return queue.TryReceive((c, type, body) => {
+			public bool TryReceive(Action<string, object> handleItem, TimeSpan timeout) =>
+				queue.TryReceive((c, type, body) => {
 					handleItem(type.Name, serializer.Deserialize(body, type));
 				}, timeout);
-			}
 		}
 
 		public IChannel OpenConversationChannel(ServiceBrokerConversation conversation) {
